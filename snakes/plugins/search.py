@@ -3,13 +3,15 @@ import utility
 import snakes.nets
 from snakes.nets import *
 
-# make the state graph suitable for using net marking in guards for transitions
+# make the state graph suitable for using net marking as part of the transition guards
+# ie., in the namespace of a net, expression of itself is also evaluable
 @snakes.plugins.plugin("snakes.nets")
 def extend(module):
 	class StateGraph(module.StateGraph):
-		def __init__(self, net):
+		def __init__(self, net, aug_graph=None):
 			module.StateGraph.__init__(self, net)
 			W = {} # the max outgoing weights for places
+			# this net will be augmented by clone transitions and fire-restrictions
 			this_net = self.net
 			# clone transition for each type
 			for place in this_net.place():
@@ -28,4 +30,52 @@ def extend(module):
 				expr = Expression("this_net.place('%s').tokens.__len__() <= %d" % (place_name, W[place_name]))
 				expr.globals.attach(this_net.globals)
 				trans.guard = expr
+			if aug_graph != None: # gv plugin should be loaded before this module
+				# print(aug_graph, type(aug_graph))
+				this_net.draw(aug_graph)
+			del W
+
+		def build_until(self, end_marking):
+			for state in self._build():
+				# first time meet it OR first time explore it
+				if self.net.get_marking() == end_marking:
+				# if self._get_state(end_marking) in self._succ[state]:
+					return
+
+		def _node2node_path(self, end_marking):
+			'''
+			search from the end using backtracking, implemented iteratively
+			'''
+			route = [] # the current backwards route
+			node_st = [] # stack for nodes
+			branch_st = [] # the top stores the # braches of the current node
+			end_state = self._get_state(end_marking)
+			node_st.append(end_state)
+			branch_st.append(1)
+			while len(node_st) > 0:
+				# print('node stack', end=': ')
+				# print(node_st)
+				if branch_st[-1] == 0:
+					branch_st.pop()
+					node_st.pop()
+					if route[-1] == end_state:
+						return
+					route.pop()
+				else:
+					branch_st[-1] -= 1
+				target = node_st.pop()
+				route.append(target)
+				if target == 0:
+					path = route.copy()
+					path.reverse()
+					yield path
+				pred_list = [p for p in self._pred[target] if p < target]
+				# print('predesessor list', end=': ')
+				# print(pred_list)
+				branch_st.append(len(pred_list))
+				for pred in pred_list:
+					node_st.append(pred)
+
+
+
 	return StateGraph
