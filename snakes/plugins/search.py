@@ -41,7 +41,7 @@ def extend(module):
 				if self.net.get_marking() == end_marking:
 				# if self._get_state(end_marking) in self._succ[state]:
 					return
-
+		
 		def _node2node_path(self, end_marking):
 			'''
 			search from the end using backtracking, implemented iteratively
@@ -53,29 +53,44 @@ def extend(module):
 			node_st.append(end_state)
 			branch_st.append(1)
 			while len(node_st) > 0:
-				# print('node stack', end=': ')
-				# print(node_st)
-				if branch_st[-1] == 0:
+				print('node stack %s' % str(node_st))
+				if branch_st[-1] <= 0:
+					print('hi here')
 					branch_st.pop()
-					node_st.pop()
-					if route[-1] == end_state:
-						return
 					route.pop()
-				else:
-					branch_st[-1] -= 1
+					continue
 				target = node_st.pop()
+				branch_st[-1] -= 1
+				print("pop -> %s" % str(target))
 				route.append(target)
 				if target == 0:
 					path = route.copy()
 					path.reverse()
+					route.pop()
 					yield path
+					continue
 				pred_list = [p for p in self._pred[target] if p < target]
-				# print('predesessor list', end=': ')
-				# print(pred_list)
+				print('predesessor list: %s' % str(pred_list))
 				branch_st.append(len(pred_list))
 				for pred in pred_list:
 					node_st.append(pred)
-
-
+		# for test
+		def _node2node_path_rec(self, end_marking):
+			end_state = self._get_state(end_marking)
+			self._helper([end_state])
+		def _helper(self, route):
+			# print(route)
+			target = route[-1]
+			if target == 0:
+				path = route.copy()
+				path.reverse()
+				print("path: %s" % path)
+				return
+			pred_list = [p for p in self._pred[target] if p < target]
+			for p in pred_list:
+				route.append(p)
+				self._helper(route)
+				route.pop()
+		# for test
 
 	return StateGraph
