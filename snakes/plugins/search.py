@@ -41,7 +41,25 @@ def extend(module):
 				if self.net.get_marking() == end_marking:
 				# if self._get_state(end_marking) in self._succ[state]:
 					return
-		
+
+		# def _edge_path(self, end_marking):
+		# 	for path in self._node2node_path(end_marking): # yet another yield
+		# 		sequence = [] # edges sequence up to now
+		# 		edge_st = [t for t in self._succ[path[0]][path[1]]]
+		# 		while len(edge_st) > 0:
+
+		def _edge_enumerate_rec(self, sequence, path, pos):
+			# print('  ' + str(sequence))
+			if pos == len(path) - 1:
+				yield sequence
+				return
+			# print('  ' + str(self._succ[path[pos-1]][path[pos]]))
+			for edge in self._succ[path[pos-1]][path[pos]]:
+				sequence.append((edge[0].name, edge[1]))
+				yield from self._edge_enumerate_rec(sequence, path, pos+1)
+				sequence.pop()
+
+
 		def _node2node_path(self, end_marking):
 			'''
 			search from the end using backtracking, implemented iteratively
@@ -53,15 +71,14 @@ def extend(module):
 			node_st.append(end_state)
 			branch_st.append(1)
 			while len(node_st) > 0:
-				print('node stack %s' % str(node_st))
+				# print('node stack %s' % str(node_st))
 				if branch_st[-1] <= 0:
-					print('hi here')
 					branch_st.pop()
 					route.pop()
 					continue
 				target = node_st.pop()
 				branch_st[-1] -= 1
-				print("pop -> %s" % str(target))
+				# print("pop -> %s" % str(target))
 				route.append(target)
 				if target == 0:
 					path = route.copy()
@@ -70,15 +87,15 @@ def extend(module):
 					yield path
 					continue
 				pred_list = [p for p in self._pred[target] if p < target]
-				print('predesessor list: %s' % str(pred_list))
+				# print('predesessor list: %s' % str(pred_list))
 				branch_st.append(len(pred_list))
 				for pred in pred_list:
 					node_st.append(pred)
 		# for test
 		def _node2node_path_rec(self, end_marking):
 			end_state = self._get_state(end_marking)
-			self._helper([end_state])
-		def _helper(self, route):
+			self.n2n_helper([end_state])
+		def n2n_helper(self, route):
 			# print(route)
 			target = route[-1]
 			if target == 0:
@@ -89,8 +106,9 @@ def extend(module):
 			pred_list = [p for p in self._pred[target] if p < target]
 			for p in pred_list:
 				route.append(p)
-				self._helper(route)
+				self.n2n_helper(route)
 				route.pop()
 		# for test
+
 
 	return StateGraph

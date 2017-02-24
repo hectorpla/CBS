@@ -39,16 +39,22 @@ else: pn.add_output('char', 'uppercase_ascii', Expression('c.upper()'))
 pn.set_marking(Marking(char=MultiSet(['t'])))
 s = StateGraph(pn, aug_graph='draws/clone_added.eps')
 # s.build()
-end_marking = Marking(string=MultiSet(['t']), int=MultiSet(['t'])) # char=MultiSet(['t', 't'])
+##### test end marking
+# char=MultiSet(['t', 't'])
+# string=MultiSet(['t']), int=MultiSet(['t'])
+#####
+end_marking = Marking(char=MultiSet(['t']), string=MultiSet(['t']), int=MultiSet(['t'])) 
 s.build_until(end_marking)
 
 pn.draw('draws/ocaml_char.eps')
 s.draw('draws/state_graph.eps', debug=True)
 
-s._node2node_path_rec(end_marking)
+# s._node2node_path_rec(end_marking)
+print('---------------')
 for route in s._node2node_path(end_marking):
-	print('path:')
-	print(route)
+	print('path: {0}'.format(route))
+	for seq in s._edge_enumerate_rec([], route, 1):
+		print('edge sequence: %s' % seq)
 
 # print('------------state graph--------------')
 # for state in s :
