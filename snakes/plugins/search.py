@@ -1,5 +1,4 @@
 import snakes.plugins
-import utility
 import snakes.nets
 from snakes.nets import *
 
@@ -7,6 +6,20 @@ from snakes.nets import *
 # ie., in the namespace of a net, expression of itself is also evaluable
 @snakes.plugins.plugin("snakes.nets")
 def extend(module):
+	class Place(module.Place):
+		def max_out(self):
+			'''
+			find out the maximum outgoing weight
+			'''
+			if len(self.post) == 0:
+				return 0
+			return max(map(self._weight_of_arc, self.post))
+		def _weight_of_arc(self, e):
+			if isinstance(e, MultiArc):
+				return len(e)
+			else:
+				return 1
+
 	class StateGraph(module.StateGraph):
 		def __init__(self, net, aug_graph=None):
 			module.StateGraph.__init__(self, net)
@@ -17,7 +30,7 @@ def extend(module):
 			for place in this_net.place():
 				t = place.name
 				tr = 'clone_' + t
-				W[t] = utility.max_out(place)
+				W[t] = place.max_out() # utility.max_out(place)
 				this_net.add_transition(Transition(tr))
 				this_net.add_input(t, tr, Variable(t[:3]))
 				this_net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
@@ -27,7 +40,7 @@ def extend(module):
 			for trans in this_net.transition():
 				place_name = list(trans.post.keys())[0] # for function that has only one return value
 				place = this_net.place(place_name)
-				expr = Expression("this_net.place('%s').tokens.__len__() <= %d" % (place_name, W[place_name]))
+				expr = Expression("len(this_net.place('%s').tokens) <= %d" % (place_name, W[place_name]))
 				expr.globals.attach(this_net.globals)
 				trans.guard = expr
 			if aug_graph != None: # gv plugin should be loaded before this module
@@ -42,23 +55,21 @@ def extend(module):
 				# if self._get_state(end_marking) in self._succ[state]:
 					return
 
-		# def _edge_path(self, end_marking):
-		# 	for path in self._node2node_path(end_marking): # yet another yield
-		# 		sequence = [] # edges sequence up to now
-		# 		edge_st = [t for t in self._succ[path[0]][path[1]]]
-		# 		while len(edge_st) > 0:
+		def enumerate_sketch(self, end_marking):
+			for route in self._node2node_path(end_marking):
+				print('path: {0}'.format(route))
+				for sequence in self._edge_enumerate_rec([], route, 1):
+					yield sequence
 
+		# give up to write an iterative one
 		def _edge_enumerate_rec(self, sequence, path, pos):
-			# print('  ' + str(sequence))
-			if pos == len(path) - 1:
+			if pos == len(path):
 				yield sequence
 				return
-			# print('  ' + str(self._succ[path[pos-1]][path[pos]]))
 			for edge in self._succ[path[pos-1]][path[pos]]:
-				sequence.append((edge[0].name, edge[1]))
+				sequence.append(edge[0].name)
 				yield from self._edge_enumerate_rec(sequence, path, pos+1)
 				sequence.pop()
-
 
 		def _node2node_path(self, end_marking):
 			'''
@@ -110,5 +121,9 @@ def extend(module):
 				route.pop()
 		# for test
 
-
-	return StateGraph
+		def construct_a_graph(self):
+			'''
+			construct a simple reachability graph described as in the paper
+			'''
+			raise NotImplementedError("to implement")
+	return Place, StateGraph
