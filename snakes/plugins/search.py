@@ -17,6 +17,12 @@ class cannotReachError(searchError):
 			format(self.end_marking, self.stateGraph[0], self.stateGraph.net.name)
 		return repr(msg)
 		
+################## Utility ##################
+def weight_of_arc(e):
+			if isinstance(e, MultiArc):
+				return len(e)
+			else:
+				return 1
 
 # make the state graph suitable for using net marking as part of the transition guards
 # ie., in the namespace of a net, expression of itself is also evaluable
@@ -29,12 +35,22 @@ def extend(module):
 			'''
 			if len(self.post) == 0:
 				return 0
-			return max(map(self._weight_of_arc, self.post))
-		def _weight_of_arc(self, e):
-			if isinstance(e, MultiArc):
-				return len(e)
-			else:
-				return 1
+			return max(map(weight_of_arc, self.post))
+
+	class Transition(module.Transition):
+		def is_nonincreasing(self):
+			"""check if this transition has non-increasing property, i.e. consuming more tokens
+			   than producing, no tokens with new types produced 
+			"""
+			counts = {}
+			for i, arc in self._input.items():
+				counts[i.name] = weight_of_arc(arc)
+			print(self.name, counts)
+			for o, arc in self._output.items():
+				if o.name not in counts or counts[o.name] < weight_of_arc(arc):
+					return False
+			print('hi here')
+			return True
 
 	class StateGraph(module.StateGraph):
 		def __init__(self, net, aug_graph=None):
@@ -50,13 +66,16 @@ def extend(module):
 				this_net.add_transition(Transition(tr))
 				this_net.add_input(t, tr, Variable(t[:3]))
 				this_net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
-
+			# let the net be evaluable in the local context itself
 			this_net.globals._env['this_net'] = this_net # not safe
-
+			# add guards for transition
 			for trans in this_net.transition():
+				if trans.is_nonincreasing(): # special case
+					continue
 				place_name = list(trans.post.keys())[0] # for function that has only one return value
 				place = this_net.place(place_name)
-				expr = Expression("len(this_net.place('%s').tokens) <= %d" % (place_name, W[place_name]))
+				expr = Expression("len(this_net.place('%s').tokens) <= %d" 
+					% (place_name, W[place_name]))
 				expr.globals.attach(this_net.globals)
 				trans.guard = expr
 			if aug_graph != None: # gv plugin should be loaded before this module
@@ -147,4 +166,4 @@ def extend(module):
 			construct a simple reachability graph described as in the paper
 			'''
 			raise NotImplementedError("to implement")
-	return Place, StateGraph
+	return Place, Transition, StateGraph
