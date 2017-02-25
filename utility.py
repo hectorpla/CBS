@@ -23,17 +23,21 @@ class Signature(object):
 	def __init__(self):
 		raise NotImplementedError("abstract class")
 
-	def 
+	def parse(self): 
 
 class TargetFunc(Signature):
 	def __init__(self):
+		self.name = ""
+		self.net = PetriNet(self.name)
+		
+	def output(self):
+		"""write out the function definition"""
 		pass
-	def parse(self):
-
 
 class Component(Signature):
 	"""A function in the specified library"""
 	def __init__(self, , petri): # data structure to pass in: file handler or a python object?
+		self.name = ""
 		self.net = petri
 		self.paras = [] # (key, value) -> (arg name, arg type)
 		self.rtypes = set() # return types

@@ -2,6 +2,22 @@ import snakes.plugins
 import snakes.nets
 from snakes.nets import *
 
+class searchError(Exception):
+	def __init__(self, stateGraph):
+		self.stateGraph = stateGraph
+	def __str__(self):
+		return repr('{0}'.format(self.stateGraph.net.name))
+
+class cannotReachError(searchError):
+	def __init__(self, stateGraph, end_marking):
+		super(cannotReachError, self).__init__(stateGraph)
+		self.end_marking = end_marking
+	def __str__(self):
+		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
+			format(self.end_marking, self.stateGraph[0], self.stateGraph.net.name)
+		return repr(msg)
+		
+
 # make the state graph suitable for using net marking as part of the transition guards
 # ie., in the namespace of a net, expression of itself is also evaluable
 @snakes.plugins.plugin("snakes.nets")
@@ -75,10 +91,12 @@ def extend(module):
 			'''
 			search from the end using backtracking, implemented iteratively
 			'''
+			end_state = self._get_state(end_marking)
+			if end_state == None:
+				raise cannotReachError(self, end_marking)
 			route = [] # the current backwards route
 			node_st = [] # stack for nodes
 			branch_st = [] # the top stores the # braches of the current node
-			end_state = self._get_state(end_marking)
 			node_st.append(end_state)
 			branch_st.append(1)
 			while len(node_st) > 0:
@@ -105,6 +123,8 @@ def extend(module):
 		# for test
 		def _node2node_path_rec(self, end_marking):
 			end_state = self._get_state(end_marking)
+			if end_state == None:
+				raise cannotReachError(self, end_marking)
 			self.n2n_helper([end_state])
 		def n2n_helper(self, route):
 			# print(route)
@@ -114,6 +134,7 @@ def extend(module):
 				path.reverse()
 				print("path: %s" % path)
 				return
+			print(target)
 			pred_list = [p for p in self._pred[target] if p < target]
 			for p in pred_list:
 				route.append(p)
