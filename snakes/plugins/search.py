@@ -3,15 +3,16 @@ import snakes.nets
 from snakes.nets import *
 
 class searchError(Exception):
-	def __init__(self, stateGraph):
+	def __init__(self, stateGraph, msg=None):
 		self.stateGraph = stateGraph
+		self.msg = msg
 	def __str__(self):
-		return repr('{0}'.format(self.stateGraph.net.name))
+		return repr('{0} -> {1}'.format(self.stateGraph.net.name, self.msg))
 
 class cannotReachError(searchError):
 	def __init__(self, stateGraph, end_marking):
 		super(cannotReachError, self).__init__(stateGraph)
-		self.end_marking = end_marking
+		self.end_marking = self.end_marking
 	def __str__(self):
 		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
 			format(self.end_marking, self.stateGraph[0], self.stateGraph.net.name)
@@ -45,19 +46,22 @@ def extend(module):
 			counts = {}
 			for i, arc in self._input.items():
 				counts[i.name] = weight_of_arc(arc)
-			print(self.name, counts)
 			for o, arc in self._output.items():
 				if o.name not in counts or counts[o.name] < weight_of_arc(arc):
 					return False
-			print('hi here')
 			return True
 
 	class StateGraph(module.StateGraph):
-		def __init__(self, net, aug_graph=None):
+		def __init__(self, net, end=None, start=None, aug_graph=None):
 			module.StateGraph.__init__(self, net)
 			W = {} # the max outgoing weights for places
 			# this net will be augmented by clone transitions and fire-restrictions
 			this_net = self.net
+			if end is None:
+				raise searchError(self, "end marking not specified")
+			self.end_marking = end
+			if start != None:
+				this_net.set_marking(start)
 			# clone transition for each type
 			for place in this_net.place():
 				t = place.name
@@ -83,15 +87,15 @@ def extend(module):
 				this_net.draw(aug_graph)
 			del W
 
-		def build_until(self, end_marking):
+		def build_until(self):
 			for state in self._build():
 				# first time meet it OR first time explore it
-				if self.net.get_marking() == end_marking:
-				# if self._get_state(end_marking) in self._succ[state]:
+				if self.net.get_marking() == self.end_marking:
+				# if self._get_state(self.end_marking) in self._succ[state]:
 					return
 
-		def enumerate_sketch(self, end_marking):
-			for route in self._node2node_path(end_marking):
+		def enumerate_sketch(self):
+			for route in self._node2node_path():
 				print('path: {0}'.format(route))
 				for sequence in self._edge_enumerate_rec([], route, 1):
 					yield sequence
@@ -106,13 +110,13 @@ def extend(module):
 				yield from self._edge_enumerate_rec(sequence, path, pos+1)
 				sequence.pop()
 
-		def _node2node_path(self, end_marking):
+		def _node2node_path(self):
 			'''
 			search from the end using backtracking, implemented iteratively
 			'''
-			end_state = self._get_state(end_marking)
+			end_state = self._get_state(self.end_marking)
 			if end_state == None:
-				raise cannotReachError(self, end_marking)
+				raise cannotReachError(self, self.end_marking) # !to modify
 			route = [] # the current backwards route
 			node_st = [] # stack for nodes
 			branch_st = [] # the top stores the # braches of the current node
@@ -128,7 +132,7 @@ def extend(module):
 				branch_st[-1] -= 1
 				# print("pop -> %s" % str(target))
 				route.append(target)
-				if target == 0:
+				if target == 0: # issue: 0 -> 0 self cycle
 					path = route.copy()
 					path.reverse()
 					route.pop()
@@ -140,10 +144,10 @@ def extend(module):
 				for pred in pred_list:
 					node_st.append(pred)
 		# for test
-		def _node2node_path_rec(self, end_marking):
-			end_state = self._get_state(end_marking)
+		def _node2node_path_rec(self):
+			end_state = self._get_state(self.end_marking)
 			if end_state == None:
-				raise cannotReachError(self, end_marking)
+				raise cannotReachError(self, self.end_marking)
 			self.n2n_helper([end_state])
 		def n2n_helper(self, route):
 			# print(route)
@@ -161,9 +165,10 @@ def extend(module):
 				route.pop()
 		# for test
 
-		def construct_a_graph(self):
+		def construct_alpha_graph(self):
 			'''
 			construct a simple reachability graph described as in the paper
 			'''
+
 			raise NotImplementedError("to implement")
 	return Place, Transition, StateGraph
