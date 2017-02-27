@@ -53,7 +53,7 @@ s.build()
 pn.draw('draws/ocaml_char.eps')
 s.draw('draws/state_graph.eps', debug=True)
 
-# s._node2node_path_rec(end_marking)
+# s._node2node_path_rec()
 print('---------------')
 for seq in s.enumerate_sketch():
 	print(seq)

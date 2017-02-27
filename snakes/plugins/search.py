@@ -1,6 +1,7 @@
 import snakes.plugins
 import snakes.nets
 from snakes.nets import *
+from collections import deque
 
 class searchError(Exception):
 	def __init__(self, stateGraph, msg=None):
@@ -50,6 +51,52 @@ def extend(module):
 				if o.name not in counts or counts[o.name] < weight_of_arc(arc):
 					return False
 			return True
+		def reachable_maps(self):
+			'''product of input places and output places'''
+			reachables = {}
+			for o in self._output:
+				reachables[o.name] = set([i.name for i in self._input])
+			return reachables
+
+	class PetriNet(module.PetriNet):
+		def reachables_places(self, targets):
+			reachables = set()
+			if isinstance(targets, list):
+				for t in targets:
+					reachables |= self._reachable_places(t)
+			else:
+				reachables = _reachable_places(targets)
+			return reachables
+
+		def _reachable_places(self, target):
+			'''
+			In alpha(N) return all nodes that all backwards reachable from the target types
+			from the target places
+			'''
+			graph = self._construct_alpha_graph()
+			reachables = set()
+			q = deque([])
+			q.append(target)
+			while len(q) > 0:
+				place = q.popleft()
+				reachables.add(place)
+				for src in graph[target]:
+					if src not in reachables:
+						q.append(src)
+			return reachables
+		def _construct_alpha_graph(self):
+			'''
+			construct the simple reachability graph described as in the paper
+			'''
+			graph = {}
+			for tran in self._trans.values():
+				m = tran.reachable_maps()
+				for out, ins in m.items():
+					if out not in graph:
+						graph[out] = ins
+					else:
+						graph[out] |= ins
+			return graph
 
 	class StateGraph(module.StateGraph):
 		def __init__(self, net, end=None, start=None, aug_graph=None):
@@ -70,22 +117,34 @@ def extend(module):
 				this_net.add_transition(Transition(tr))
 				this_net.add_input(t, tr, Variable(t[:3]))
 				this_net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
+			# find all places that can be backwards reachable from the end marking
+			useful_places = self._useful_places()
 			# let the net be evaluable in the local context itself
 			this_net.globals._env['this_net'] = this_net # not safe
 			# add guards for transition
 			for trans in this_net.transition():
+				unuseful = (not (place in useful_places) for place in trans.post.keys())
+				if all(unuseful): # prune unecessary places for tokens to go
+					trans.guard = Expression("False")
+					continue
 				if trans.is_nonincreasing(): # special case
 					continue
-				place_name = list(trans.post.keys())[0] # for function that has only one return value
+				# for function that has only one return value, !need! to be extended
+				place_name = list(trans.post.keys())[0] 
 				place = this_net.place(place_name)
 				expr = Expression("len(this_net.place('%s').tokens) <= %d" 
 					% (place_name, W[place_name]))
 				expr.globals.attach(this_net.globals)
 				trans.guard = expr
 			if aug_graph != None: # gv plugin should be loaded before this module
-				# print(aug_graph, type(aug_graph))
 				this_net.draw(aug_graph)
 			del W
+
+		def _useful_places(self):
+			targets = []
+			for place in self.end_marking:
+				targets.append(place)
+			return self.net.reachables_places(targets)
 
 		def build_until(self):
 			for state in self._build():
@@ -138,7 +197,7 @@ def extend(module):
 					route.pop()
 					yield path
 					continue
-				pred_list = [p for p in self._pred[target] if p < target]
+				pred_list = [p for p in self._pred[target] if p not in route] # linear search
 				# print('predesessor list: %s' % str(pred_list))
 				branch_st.append(len(pred_list))
 				for pred in pred_list:
@@ -150,25 +209,16 @@ def extend(module):
 				raise cannotReachError(self, self.end_marking)
 			self.n2n_helper([end_state])
 		def n2n_helper(self, route):
-			# print(route)
 			target = route[-1]
 			if target == 0:
 				path = route.copy()
 				path.reverse()
 				print("path: %s" % path)
 				return
-			print(target)
 			pred_list = [p for p in self._pred[target] if p < target]
 			for p in pred_list:
 				route.append(p)
 				self.n2n_helper(route)
 				route.pop()
-		# for test
-
-		def construct_alpha_graph(self):
-			'''
-			construct a simple reachability graph described as in the paper
-			'''
-
-			raise NotImplementedError("to implement")
-	return Place, Transition, StateGraph
+		# for test		
+	return Place, Transition, PetriNet, StateGraph
