@@ -119,6 +119,7 @@ def extend(module):
 				this_net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
 			# find all places that can be backwards reachable from the end marking
 			useful_places = self._useful_places()
+			print("####Useful places:", useful_places)
 			# let the net be evaluable in the local context itself
 			this_net.globals._env['this_net'] = this_net # not safe
 			# add guards for transition
@@ -215,7 +216,7 @@ def extend(module):
 				path.reverse()
 				print("path: %s" % path)
 				return
-			pred_list = [p for p in self._pred[target] if p < target]
+			pred_list = [p for p in self._pred[target] if p < target] # unsynced with iterative
 			for p in pred_list:
 				route.append(p)
 				self.n2n_helper(route)
