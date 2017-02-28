@@ -1,9 +1,9 @@
 import snakes.nets
 from snakes.nets import *
 
-class Parameters():
-	"""parse the parameters of a function into specified data structure"""
-	pass
+# class Parameters():
+# 	"""parse the parameters of a function into specified data structure"""
+# 	pass
 
 class Signature(object):
 	"""A base class for Component and Target"""
@@ -21,29 +21,36 @@ class TargetFunc(Signature):
 
 class Component(Signature):
 	"""A function in the specified library"""
-	def __init__(self, signature, petri): # data structure to pass in: file handler or a python object?
+	def __init__(self, signature, petri):
 		self.name = signature['name']
 		self.net = petri
 		# (key, value) -> (arg name, arg type)
-		self.paras = [(arg, atype) in zip(signature['paramNames'], signature['parasTypes'])] 
-		self.rtypes = set(signature['tgtTypes']) # return types
+		self.paras = [(arg, atype) for (arg, atype) in zip(signature['paramNames'], signature['paramTypes'])] 
+		if isinstance(signature['tgtTypes'], list):
+			self.rtypes = set(signature['tgtTypes']) # return types
+		else:
+			self.rtypes = set([signature['tgtTypes']])
+		# print(self.paras)
+		# print(self.rtypes)
 		# initialize the two members
-		self._in, self._out = self._count_weights(paras, rtypes)
+		self._in, self._out = self._count_weights(self.paras, self.rtypes)
+		print(self._in)
+		print(self._out)
 		self._add_func()
 
 	def _add_func(self):
 		for place in self._in:
 			if not self.net.has_place(place):
-				self.net.add_node(place)
-		for place in rtypes:
+				self.net.add_place(Place(place))
+		for place in self._out:
 			if not self.net.has_place(place):
-				self.net.add_node(place)
+				self.net.add_place(Place(place))
 		assert not self.net.has_transition(self.name)
-		_trans = Transition(self.name)
+		_trans = Transition(Transition(self.name))
 		self.net.add_transition(_trans)
 		for place, weight in self._in.items():
 			self.net.add_input(place, _trans, MultiArc([Variable('t')] * weight))
-		for place, weight in self._out.items():
+		for place, weight in self._out:
 			self.net.add_output(place, _trans, MultiArc([Variable('t')] * weight))
 
 	def _count_weights(self, paras, rtypes):
@@ -51,8 +58,8 @@ class Component(Signature):
 		_output = {}
 		for pa, t in self.paras:
 			_input[t] = _input.get(t, 0) + 1
-		for rt in self.rtypes.items():
-			_output[t] = _output[t] + 1
+		for rt in self.rtypes:
+			_output[rt] = _output.get(rt, 0) + 1
 		return _input, _output
 
 	def sketch(self):

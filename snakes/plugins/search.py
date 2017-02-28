@@ -221,5 +221,9 @@ def extend(module):
 				route.append(p)
 				self.n2n_helper(route)
 				route.pop()
-		# for test		
+		# for test
+
+		def _iter_deepening(self, max_depth):
+			"""search for path with iter""" 
+			pass
 	return Place, Transition, PetriNet, StateGraph
