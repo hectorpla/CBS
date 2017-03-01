@@ -59,8 +59,13 @@ class Component(Signature):
 		return _input, _output
 
 	def sketch(self, var_gen, hole_counter):
-		sk = "let " + next(var_gen) + " = " + self.name
-		for pa, t in self.paras:
-			sk += ' #' + str(next(hole_counter)) + '(' + t + ')'
+		sk = "let " + next(var_gen) + " = "
+		if self.name in ['^']:
+			assert len(self.paras) == 2
+			sk += '#' + str(next(hole_counter)) + ' ^ #' + str(next(hole_counter))
+		else:
+			sk += self.name
+			for pa, t in self.paras:
+				sk += ' #' + str(next(hole_counter)) + '(' + t + ')'
 		return sk
 	

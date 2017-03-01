@@ -122,7 +122,7 @@ def extend(module):
 				this_net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
 			# find all places that can be backwards reachable from the end marking
 			useful_places = self._useful_places()
-			print("####Useful places:", useful_places)
+			print("~~~~~~~~~~~~~Useful places:", useful_places, "~~~~~~~~~~~~~")
 			# let the net be evaluable in the local context itself
 			this_net.globals._env['this_net'] = this_net # not safe
 			# add guards for transition
@@ -157,14 +157,22 @@ def extend(module):
 				# if self._get_state(self.end_marking) in self._succ[state]:
 					return
 
-		def enumerate_sketch(self):
-			for route in self._node2node_path():
+		def enumerate_sketch_l(self, max_depth=10):
+			"""yet another generator warpping another"""
+			for length in range(2, max_depth+2):
+				print("^^^length", length)
+				yield from self.enumerate_sketch(length)
+
+		def enumerate_sketch(self, depth=float('inf')): # bad pattern?: used internally and externally
+			"""list all possible transition paths from all state paths"""
+			for route in self._node2node_path(depth):
 				print('path: {0}'.format(route))
 				for sequence in self._edge_enumerate_rec([], route, 1):
 					yield sequence
 
 		# give up to write an iterative one
 		def _edge_enumerate_rec(self, sequence, path, pos):
+			"""given a node path, return cross product of all steps"""
 			if pos == len(path):
 				yield sequence
 				return
@@ -173,7 +181,7 @@ def extend(module):
 				yield from self._edge_enumerate_rec(sequence, path, pos+1)
 				sequence.pop()
 
-		def _node2node_path(self):
+		def _node2node_path(self, depth=float('inf')):
 			'''
 			search from the end using backtracking, implemented iteratively
 			'''
@@ -195,17 +203,23 @@ def extend(module):
 				branch_st[-1] -= 1
 				# print("pop -> %s" % str(target))
 				route.append(target)
-				if target == 0: # issue: 0 -> 0 self cycle
-					path = route.copy()
-					path.reverse()
-					route.pop()
-					yield path
-					continue
-				pred_list = [p for p in self._pred[target] if p not in route] # linear search
-				# print('predesessor list: %s' % str(pred_list))
+				if len(route) == depth or depth == float('inf'): # ugly: logic fallable
+					if target == 0: # issue: 0 -> 0 self cycle for infinite depth case
+						path = route.copy()
+						path.reverse()
+						route.pop()
+						yield path
+						continue
+					if len(route) == depth:
+						# print('specified depth reached: {0}'.format(depth))
+						route.pop() #
+						continue
+				if depth == float('inf'):
+					pred_list = [p for p in self._pred[target] if p not in route] # linear search
+				else:
+					pred_list = [p for p in self._pred[target]]
 				branch_st.append(len(pred_list))
-				for pred in pred_list:
-					node_st.append(pred)
+				node_st.extend(pred_list)
 		# for test
 		def _node2node_path_rec(self):
 			end_state = self._get_state(self.end_marking)
