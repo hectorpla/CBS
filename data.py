@@ -1,5 +1,6 @@
-import snakes.nets
-from snakes.nets import *
+import snakes.plugins
+snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
+from snk import *
 
 # class Parameters():
 # 	"""parse the parameters of a function into specified data structure"""
@@ -30,12 +31,8 @@ class Component(Signature):
 			self.rtypes = set(signature['tgtTypes']) # return types
 		else:
 			self.rtypes = set([signature['tgtTypes']])
-		# print(self.paras)
-		# print(self.rtypes)
 		# initialize the two members
 		self._in, self._out = self._count_weights(self.paras, self.rtypes)
-		print(self._in)
-		print(self._out)
 		self._add_func()
 
 	def _add_func(self):
@@ -46,12 +43,11 @@ class Component(Signature):
 			if not self.net.has_place(place):
 				self.net.add_place(Place(place))
 		assert not self.net.has_transition(self.name)
-		_trans = Transition(Transition(self.name))
-		self.net.add_transition(_trans)
+		self.net.add_transition(Transition(self.name))
 		for place, weight in self._in.items():
-			self.net.add_input(place, _trans, MultiArc([Variable('t')] * weight))
-		for place, weight in self._out:
-			self.net.add_output(place, _trans, MultiArc([Variable('t')] * weight))
+			self.net.add_input(place, self.name, MultiArc([Variable('var')] * weight))
+		for place, weight in self._out.items():
+			self.net.add_output(place, self.name, MultiArc([Variable('var')] * weight))
 
 	def _count_weights(self, paras, rtypes):
 		_input = {}

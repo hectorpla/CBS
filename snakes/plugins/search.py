@@ -13,7 +13,7 @@ class searchError(Exception):
 class cannotReachError(searchError):
 	def __init__(self, stateGraph, end_marking):
 		super(cannotReachError, self).__init__(stateGraph)
-		self.end_marking = self.end_marking
+		self.end_marking = end_marking
 	def __str__(self):
 		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
 			format(self.end_marking, self.stateGraph[0], self.stateGraph.net.name)
@@ -100,15 +100,18 @@ def extend(module):
 
 	class StateGraph(module.StateGraph):
 		def __init__(self, net, end=None, start=None, aug_graph=None):
+			if start is not None:
+				old = net.get_marking()
+				net.set_marking(start)
 			module.StateGraph.__init__(self, net)
+			if start is not None:
+				net.set_marking(old)
 			W = {} # the max outgoing weights for places
 			# this net will be augmented by clone transitions and fire-restrictions
 			this_net = self.net
 			if end is None:
 				raise searchError(self, "end marking not specified")
 			self.end_marking = end
-			if start != None:
-				this_net.set_marking(start)
 			# clone transition for each type
 			for place in this_net.place():
 				t = place.name

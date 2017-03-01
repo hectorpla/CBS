@@ -4,7 +4,7 @@ from data import *
 
 def construct_net(name, dir):
 	net = PetriNet(name)
-	components = dict(((comp[name], Component(comp, net)) for comp in parse_dir(dir)))
+	components = dict(((comp['name'], Component(comp, net)) for comp in parse_dir(dir)))
 	return net, components
 
 def parse_dir(dir):
@@ -14,13 +14,16 @@ def parse_dir(dir):
 	return [e for e in m if e is not None]
 
 def parse_json(file):
+	# print('parsing file:', file)
 	result = None
 	try:
 		f = open(file, 'r')
 		serial = f.read()
 		result = json.loads(serial)
-	except Exception as e:
-		print('json parsing error: ', e)
+	except IOError as ioe:
+		print('IO error: ', ioe)
+	except ValueError as ve:
+		print('value error parsing', ":", ve)
 	finally:
 		f.close()
 	return result
