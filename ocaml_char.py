@@ -41,9 +41,10 @@ else: pn.add_output('string', '^', Expression('s1 + s2'))
 ##### test end marking
 # char=MultiSet(['t', 't'])
 # string=MultiSet(['t']), int=MultiSet(['t'])
+# string=MultiSet(['t'])
 # char=MultiSet(['t']), string=MultiSet(['t']), int=MultiSet(['t'])
 #####
-end_marking = Marking(string=MultiSet(['t']*2))
+end_marking = Marking(int=MultiSet(['t']*2))
 
 pn.set_marking(Marking(char=MultiSet(['t'])))
 s = StateGraph(pn, end=end_marking, aug_graph='draws/clone_added.eps')

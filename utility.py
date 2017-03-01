@@ -1,6 +1,7 @@
-import json
 from os import listdir
 from data import *
+import json
+import itertools
 
 def construct_net(name, dir):
 	net = PetriNet(name)
@@ -27,3 +28,20 @@ def parse_json(file):
 	finally:
 		f.close()
 	return result
+
+def var_generator():
+	cur = 0
+	while True:
+		yield 'v' + str(cur)
+		cur += 1
+
+def gen_sketch(components, sequence):
+	counter = itertools.count(0)
+	var_gen = var_generator()
+	sketch = []
+	for f in sequence:
+		if f.startswith('clone_'): # watchout: mind the name confilction 
+			continue
+		sketch.append((components[f].sketch(var_gen, counter)))
+	sketch.append('return #' + str(next(var_gen)))
+	return sketch

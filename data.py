@@ -58,9 +58,9 @@ class Component(Signature):
 			_output[rt] = _output.get(rt, 0) + 1
 		return _input, _output
 
-	def sketch(self):
-		sk = self.name
+	def sketch(self, var_gen, hole_counter):
+		sk = "let " + next(var_gen) + " = " + self.name
 		for pa, t in self.paras:
-			sk += ' #' + t
+			sk += ' #' + str(next(hole_counter)) + '(' + t + ')'
 		return sk
 	
