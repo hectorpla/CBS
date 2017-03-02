@@ -27,4 +27,5 @@ for seq in s.enumerate_sketch_l(6):
 	print(seq)
 	for line in gen_sketch(comps, seq):
 		print(line)
+		pass
 	print()
