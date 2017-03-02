@@ -183,29 +183,25 @@ def extend(module):
 				next_diff = len(path)
 			candidate = self._succ[path[pos-1]][path[pos]].copy() # dynamically changing set
 			pool = list(candidate)
-			repeat = next_diff - pos
-			for edge in pool:
-				candidate.remove(edge)
-				# sequence.extend([edge[0].name] * repeat) # tuple in entries: (transition, substitution)
-				yield from self._edge_enum_helper(sequence, path, pos, next_diff, candidate)
-				# for d in range(0, repeat):
-				# 	yield from self._edge_enumerate_rec(sequence, path, next_diff-d)
-				# 	sequence.pop()
-				# candidate.add(edge)
-		def _edge_enum_helper(self, sequence, path, pos, next_diff, candidate):
+			yield from self._edge_enum_helper(sequence, path, pos, pos, next_diff, candidate)
+
+		def _edge_enum_helper(self, sequence, path, rep_start, pos, next_diff, candidate):
 			"""helper for _edge_enumerate_rec to prevent listing replicate paths"""
 			if pos == next_diff:
-				yield from _edge_enumerate_rec(sequence, path, next_diff)
+				yield from self._edge_enumerate_rec(sequence, path, next_diff)
+				return
+			if len(candidate) == 0:
 				return
 			pool = list(candidate)
 			repeat = next_diff - pos
+			# print(sequence)
 			for edge in pool:
 				candidate.remove(edge)
 				sequence.extend([edge[0].name] * repeat) # tuple in entries: (transition, substitution)
 				for d in range(0, repeat):
-					yield from self._edge_enum_helper(sequence, path, next_diff-d)
+					yield from self._edge_enum_helper(sequence, path, rep_start, next_diff-d, next_diff, candidate)
 					sequence.pop()
-				candidate.add(edge)
+				if pos > rep_start: candidate.add(edge)
 			
 		def _node2node_path(self, depth=float('inf')):
 			'''
