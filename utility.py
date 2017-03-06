@@ -45,3 +45,6 @@ def gen_sketch(components, sequence):
 		sketch.append((components[f].sketch(var_gen, counter)))
 	sketch.append('return #' + str(next(var_gen)))
 	return sketch
+
+def complete_sketch():
+	pass

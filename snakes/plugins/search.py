@@ -68,6 +68,9 @@ def extend(module):
 				reachables = _reachable_places(targets)
 			return reachables
 
+		def dists_in_alpha(self, n, target):
+			raise  NotImplementedError("Not yet implemented")
+
 		def _reachable_places(self, target):
 			'''
 			In alpha(N) return all nodes that all backwards reachable from the target types
