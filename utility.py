@@ -3,10 +3,10 @@ from data import *
 import json
 import itertools
 
-def construct_net(name, dir):
-	net = PetriNet(name)
-	components = dict(((comp['name'], Component(comp, net)) for comp in parse_dir(dir)))
-	return net, components
+# def construct_net(name, dir):
+# 	net = PetriNet(name)
+# 	components = dict(((comp['name'], Component(comp, net)) for comp in parse_dir(dir)))
+# 	return net, components
 
 def parse_dir(dir):
 	if dir[-1] != '/':
