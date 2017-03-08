@@ -36,17 +36,11 @@ def comma_join(tuplelist):
 	assert len(tuplelist[0]) == 2
 	return ', '.join(map(lambda x: x[0], tuplelist))
 
-# def gen_sketch(components, sequence):
-# 	counter = itertools.count(0)
-# 	var_gen = var_generator()
-# 	sketch = []
-# 	sketch.append('let func =')
-# 	for f in sequence:
-# 		if f.startswith('clone_'): # watchout: mind the name confilction 
-# 			continue
-# 		sketch.append('\t' + (components[f].sketch(var_gen, counter)[0]) + ' in') # sketch() return a tuple
-# 	sketch.append('in #' + ', '.join([str(next(counter)) for _ in range(1)]))
-# 	return sketch
+def hypo_var_gen(hole, var):
+	return 'h_' + str(hole) + var
+
+def decompose_hypo_var(hypo):
+	return hypo.split()[1:3]
 
 def complete_sketch():
 	pass

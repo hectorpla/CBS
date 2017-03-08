@@ -165,6 +165,7 @@ class Sketch(object):
 		self.var_holes = {} # each bucket(keyed with variable) contains candidate places
 		self.hole_vars = {} # each bucket contains variables
 		self.s = z3.Solver()
+		self.hypos = {}
 	def _vars(self):
 		for typing in self.type_vars:
 			for var in self.type_vars[typing]:
@@ -195,6 +196,10 @@ class Sketch(object):
 				type_vars[typing] = set()
 			type_vars.add(var)
 
+	def add_return_line(self):
+		"""add the returning holes"""
+		raise NotImplementedError('not yet')
+
 	def _add_var_cands(self):
 		''' 
 		After adding all lines(including signature and return statement), 
@@ -207,7 +212,19 @@ class Sketch(object):
 
 	def _set_up_constraints(self):
 		'''set up constraint for each hole and variable respectively'''
-		
+		for hole in self.hole_vars:
+			self.hypos[hole] = {}
+			for var in self.hole_vars[hole]:
+				self.hypos[hole][var] = Bool(hypo_var_gen(hole, var))
+			vcandlist = list(hypos[hole])
+			self.s.add(AtMost(vcandlist) + [1]) # all adds up to 0 or 1
+			self.s.add(Or(vcandlist))
+
+		for var in self.var_holes:
+			hcandlist = list(hypo_var_gen(hole, var) for hole in self.var_holes[var])
+			self.s.add(AtLeast(hcandlist) + [1])
+				
+
 
 	def gen_hypothesis(self):
 		pass
