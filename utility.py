@@ -30,6 +30,12 @@ def var_generator():
 		yield 'v' + str(cur)
 		cur += 1
 
+def comma_join(tuplelist):
+	'''used for generating parameter lists
+	input: [(paraName, paraType), ...]'''
+	assert len(tuplelist[0]) == 2
+	return ', '.join(map(lambda x: x[0], tuplelist))
+
 # def gen_sketch(components, sequence):
 # 	counter = itertools.count(0)
 # 	var_gen = var_generator()

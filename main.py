@@ -1,4 +1,3 @@
-# from utility import * # snakes module inside
 from data import *
 
 # directory = "./json/char"

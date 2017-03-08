@@ -33,7 +33,7 @@ class Synthesis(object):
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		sketch = []
-		sketch.append('let ' + self.targetfunc.name + ' =')
+		sketch.append(self.targetfunc.output_sigtr())
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
@@ -58,6 +58,10 @@ class Synthesis(object):
 			print(line)
 		print()
 		"""
+		raise NotImplementedError('not yet implemented')
+
+	def stat(self):
+		"""show statistics after synthesis"""
 		raise NotImplementedError('not yet implemented')
 class Signature(object):
 	"""A base class for Component and Target"""
@@ -98,10 +102,9 @@ class TargetFunc(Signature):
 		for i, weight in self._out.items():
 			ws[i] = MultiSet(['t'] * weight)
 		return Marking(ws)
-	def output(self):
+	def output_sigtr(self):
 		"""write out the function definition"""
-		raise NotImplementedError("abstract class")
-		pass
+		return 'let ' + self.name + ' ' + comma_join(self.paras) + ' ='
 
 class Component(Signature):
 	"""A function in the specified library"""
@@ -132,7 +135,7 @@ class Component(Signature):
 		holes = []
 		variables = [(next(var_gen), self.rtypes[i]) for i in range(len(self.rtypes))]
 		sk = "let "
-		sk += ', '.join(map(lambda x: x[0], variables))
+		sk += comma_join(variables)
 		sk +=" = "
 		if self.name in ['^']:
 			assert len(self.paras) == 2
@@ -142,28 +145,69 @@ class Component(Signature):
 			hole_num = next(hole_counter)
 			holes.append((hole_num, t))
 			sk += ' #' + str(hole_num) + '(' + t + ')'
-		return sk, holes, variables
+		return sk, SketchLine(holes, variables)
 
 class SketchLine(object):
-	'''An abstract data structure for a line of sketch'''
+	'''An abstract data structure for a line of sketch(semantic of a line)'''
 	def __init__(self, holes, variables):
-		self.holes = holes
-		self.vars = variables
-
+		self.holes = holes # list of (hole#, type)
+		self.vars = variables # list of (var_name, type)
+	def holes(self):
+		return (hole for hole in self.holes)
+	def variables(self):
+		return (var for var in self.vars)
 
 class Sketch(object):
 	"""data structure for a code sketch in purpose to complete in SAT solver"""
 	def __init__(self):
-		self.vars = []
-		self.holes = []
-		self.type_cand = {}
+		self.type_vars = {} # each bucket stores the variables having the same type
+		self.type_holes = {} # each bucket contains places
+		self.var_holes = {} # each bucket(keyed with variable) contains candidate places
+		self.hole_vars = {} # each bucket contains variables
+		self.s = z3.Solver()
+	def _vars(self):
+		for typing in self.type_vars:
+			for var in self.type_vars[typing]:
+				yield (var, typing)
+
 	def add_signature(self, sigtr):
-		pass
+		'''Simply add parameters(variables) into types, and set up variable constraints frame'''
+		assert isinstance(sigtr, Signature)
+		for name, typing in sigtr.paras:
+			if typing not in type_holes:
+				type_holes[typing] = set()
+			type_holes[typing].add(name)
+			self.var_places[name] = set()		
 
 	def add_line(self, line):
-		'''A Synthesis instance use it '''
+		'''
+		A Synthesis instance use it: when encountering every hole, find all candidate variables
+		that will be filled here; at the same time, append holes to type-buckets
+		'''
 		assert isinstance(line, SketchLine)
+		for hole, typing in line.holes():
+			hole_vars[hole] = self.type_vars[typing].copy() # shallow copy
+			if typing not in type_holes:
+				type_holes[typing] = set()
+			type_holes[typing].add(hole)
+		for var, typing in line.variables():
+			if typing not in self.type_vars:
+				type_vars[typing] = set()
+			type_vars.add(var)
 
+	def _add_var_cands(self):
+		''' 
+		After adding all lines(including signature and return statement), 
+		only hole constraints are set; variable constraints are added here
+		'''
+		for var, typing in self._vars():
+			self.var_holes[var] = set()
+			candiate_holes = (hole for hole in type_holes[typing] if var in self.hole_vars[hole])
+			self.var_holes[var].update(candiate_holes)
+
+	def _set_up_constraints(self):
+		'''set up constraint for each hole and variable respectively'''
+		
 
 	def gen_hypothesis(self):
 		pass
