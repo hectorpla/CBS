@@ -2,6 +2,7 @@ from utility import *
 import snakes.plugins
 snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
 from snk import *
+import z3
 
 class parseError(Exception):
 	def __init__(self, msg):
@@ -28,11 +29,25 @@ class Synthesis(object):
 			start=start_marking, end=end_marking, aug_graph='draws/clone_added.eps')
 		self.stategraph.build()
 
+	def _gen_sketch(self, sequence):
+		counter = itertools.count(0)
+		var_gen = var_generator()
+		sketch = []
+		sketch.append('let ' + self.targetfunc.name + ' =')
+		for f in sequence:
+			if f.startswith('clone_'): # watchout: mind the name confilction 
+				continue
+			sketch.append('\t' + (self.comps[f].sketch(var_gen, counter)[0]) + ' in') # sketch() return a tuple
+		sketch.append('in #' + 
+			', '.join([str(next(counter)) for _ in range(self.targetfunc.output_len())]))
+		return sketch
+
 	def inc_len_sketch_enum(self, max_len):
 		for seq in self.stategraph.enumerate_sketch_l(max_len):
 			print(seq)
-			for line in gen_sketch(self.comps, seq):
+			for line in self._gen_sketch(seq):
 				print(line)
+			print()
 		print()
 
 	def non_rep_sketch_enum(self):
@@ -43,17 +58,18 @@ class Synthesis(object):
 			print(line)
 		print()
 		"""
-		raise NotImplementedError()
+		raise NotImplementedError('not yet implemented')
 class Signature(object):
 	"""A base class for Component and Target"""
 	def __init__(self, sigtr_dict):
 		self.name = sigtr_dict['name']
+		assert len(sigtr_dict['paramNames']) == len(sigtr_dict['paramTypes'])
 		# (key, value) -> (arg name, arg type)
 		self.paras = [(arg, atype) for (arg, atype) in zip(sigtr_dict['paramNames'], sigtr_dict['paramTypes'])] 
 		if isinstance(sigtr_dict['tgtTypes'], list):
-			self.rtypes = set(sigtr_dict['tgtTypes']) # return types
+			self.rtypes = sigtr_dict['tgtTypes'] # return types
 		else:
-			self.rtypes = set([sigtr_dict['tgtTypes']])
+			self.rtypes = [sigtr_dict['tgtTypes']]
 		self._in, self._out = self._count_weights(self.paras, self.rtypes)
 	def _count_weights(self, paras, rtypes):
 		_input = {}
@@ -63,6 +79,10 @@ class Signature(object):
 		for rt in self.rtypes:
 			_output[rt] = _output.get(rt, 0) + 1
 		return _input, _output
+	def input_len(self):
+		return len(self.paras)
+	def output_len(self):
+		return len(self.rtypes)
 
 class TargetFunc(Signature):
 	def __init__(self, info):
@@ -106,19 +126,49 @@ class Component(Signature):
 			self.net.add_output(place, self.name, MultiArc([Variable('var')] * weight))
 
 	def sketch(self, var_gen, hole_counter):
-		sk = "let " + next(var_gen) + " = "
+		'''
+		outline the component function, in string form as well as abstract form(holes, variables)
+		'''
+		holes = []
+		variables = [(next(var_gen), self.rtypes[i]) for i in range(len(self.rtypes))]
+		sk = "let "
+		sk += ', '.join(map(lambda x: x[0], variables))
+		sk +=" = "
 		if self.name in ['^']:
 			assert len(self.paras) == 2
-			sk += '(' + self.name + ')'
-			# sk += '#' + str(next(hole_counter)) + ' ^ #' + str(next(hole_counter))
-		else:
-			sk += self.name
+			self.name = '(' + self.name + ')'
+		sk += self.name
 		for pa, t in self.paras:
-			sk += ' #' + str(next(hole_counter)) + '(' + t + ')'
-		return sk		
+			hole_num = next(hole_counter)
+			holes.append((hole_num, t))
+			sk += ' #' + str(hole_num) + '(' + t + ')'
+		return sk, holes, variables
+
+class SketchLine(object):
+	'''An abstract data structure for a line of sketch'''
+	def __init__(self, holes, variables):
+		self.holes = holes
+		self.vars = variables
+
 
 class Sketch(object):
-	"""data structure for a code sketch in purpose to solve in SAT solver"""
-	def __init__(self, arg):
-		self.arg = arg
+	"""data structure for a code sketch in purpose to complete in SAT solver"""
+	def __init__(self):
+		self.vars = []
+		self.holes = []
+		self.type_cand = {}
+	def add_signature(self, sigtr):
+		pass
+
+	def add_line(self, line):
+		'''A Synthesis instance use it '''
+		assert isinstance(line, SketchLine)
+
+
+	def gen_hypothesis(self):
+		pass
+
+
+
+
 		
