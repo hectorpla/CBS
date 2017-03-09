@@ -4,6 +4,8 @@ snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
 from snk import *
 import z3
 
+DEBUG = True
+
 class parseError(Exception):
 	def __init__(self, msg):
 		self.msg = msg
@@ -33,13 +35,19 @@ class Synthesis(object):
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		sketch = []
-		sketch.append(self.targetfunc.output_sigtr())
+		sketch_ads = Sketch()
+		sketch.append(self.targetfunc.sigtr_sketch())
+		sketch_ads.add_signature(self.targetfunc)
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
-			sketch.append('\t' + (self.comps[f].sketch(var_gen, counter)[0]) + ' in') # sketch() return a tuple
-		sketch.append('in #' + 
-			', '.join([str(next(counter)) for _ in range(self.targetfunc.output_len())]))
+			toprint, skline = self.comps[f].sketch(var_gen, counter) # sketch() return a tuple
+			sketch.append('\t' + (toprint) + ' in')
+			sketch_ads.add_line(skline)
+		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
+		sketch.append('in #' + ', '.join(map(str, return_holes)))
+		sketch_ads.add_return_line(self.targetfunc, return_holes)
+		sketch_ads.enum_subst()
 		return sketch
 
 	def inc_len_sketch_enum(self, max_len):
@@ -60,6 +68,9 @@ class Synthesis(object):
 		"""
 		raise NotImplementedError('not yet implemented')
 
+	def sketch_completion(self, sketch):
+		assert isinstance(sketch, Sketch)
+		sketch.enum_subst()
 	def stat(self):
 		"""show statistics after synthesis"""
 		raise NotImplementedError('not yet implemented')
@@ -102,7 +113,7 @@ class TargetFunc(Signature):
 		for i, weight in self._out.items():
 			ws[i] = MultiSet(['t'] * weight)
 		return Marking(ws)
-	def output_sigtr(self):
+	def sigtr_sketch(self):
 		"""write out the function definition"""
 		return 'let ' + self.name + ' ' + comma_join(self.paras) + ' ='
 
@@ -150,12 +161,12 @@ class Component(Signature):
 class SketchLine(object):
 	'''An abstract data structure for a line of sketch(semantic of a line)'''
 	def __init__(self, holes, variables):
-		self.holes = holes # list of (hole#, type)
-		self.vars = variables # list of (var_name, type)
+		self._holes = holes # list of (hole#, type)
+		self._vars = variables # list of (var_name, type)
 	def holes(self):
-		return (hole for hole in self.holes)
+		return (hole for hole in self._holes)
 	def variables(self):
-		return (var for var in self.vars)
+		return (var for var in self._vars)
 
 class Sketch(object):
 	"""data structure for a code sketch in purpose to complete in SAT solver"""
@@ -175,10 +186,12 @@ class Sketch(object):
 		'''Simply add parameters(variables) into types, and set up variable constraints frame'''
 		assert isinstance(sigtr, Signature)
 		for name, typing in sigtr.paras:
-			if typing not in type_holes:
-				type_holes[typing] = set()
-			type_holes[typing].add(name)
-			self.var_places[name] = set()		
+			if typing not in self.type_holes:
+				self.type_vars[typing] = set()
+			self.type_vars[typing].add(name)
+			self.var_holes[name] = set()
+		# print('Sketch.add_signature: ')
+		# print('type_holes ' + str(self.type_holes))
 
 	def add_line(self, line):
 		'''
@@ -187,18 +200,23 @@ class Sketch(object):
 		'''
 		assert isinstance(line, SketchLine)
 		for hole, typing in line.holes():
-			hole_vars[hole] = self.type_vars[typing].copy() # shallow copy
-			if typing not in type_holes:
-				type_holes[typing] = set()
-			type_holes[typing].add(hole)
+			self.hole_vars[hole] = self.type_vars[typing].copy() # shallow copy
+			if typing not in self.type_holes:
+				self.type_holes[typing] = set()
+			self.type_holes[typing].add(hole)
 		for var, typing in line.variables():
 			if typing not in self.type_vars:
-				type_vars[typing] = set()
-			type_vars.add(var)
+				self.type_vars[typing] = set()
+			self.type_vars[typing].add(var)
 
-	def add_return_line(self):
+	def add_return_line(self, sigtr, holes):
 		"""add the returning holes"""
-		raise NotImplementedError('not yet')
+		assert isinstance(sigtr, Signature)
+		for hole, typing in zip(holes, sigtr.rtypes):
+			self.hole_vars[hole] = self.type_vars[typing].copy()
+			if hole not in self.type_holes:
+				self.type_holes[typing] = set()
+			self.type_holes[typing].add(hole)
 
 	def _add_var_cands(self):
 		''' 
@@ -207,7 +225,7 @@ class Sketch(object):
 		'''
 		for var, typing in self._vars():
 			self.var_holes[var] = set()
-			candiate_holes = (hole for hole in type_holes[typing] if var in self.hole_vars[hole])
+			candiate_holes = (hole for hole in self.type_holes[typing] if var in self.hole_vars[hole])
 			self.var_holes[var].update(candiate_holes)
 
 	def _set_up_constraints(self):
@@ -215,21 +233,29 @@ class Sketch(object):
 		for hole in self.hole_vars:
 			self.hypos[hole] = {}
 			for var in self.hole_vars[hole]:
-				self.hypos[hole][var] = Bool(hypo_var_gen(hole, var))
-			vcandlist = list(hypos[hole])
-			self.s.add(AtMost(vcandlist) + [1]) # all adds up to 0 or 1
-			self.s.add(Or(vcandlist))
+				self.hypos[hole][var] = z3.Bool(hypo_var_gen(hole, var))
+				print(self.hypos[hole][var])
+			vcandlist = list(self.hypos[hole].values())
+			print('set up constraint: ' + str(vcandlist))
+			self.s.add(z3.AtMost(vcandlist + [1])) # all add up to 0 or 1
+			self.s.add(z3.Or(vcandlist))
 
 		for var in self.var_holes:
-			hcandlist = list(hypo_var_gen(hole, var) for hole in self.var_holes[var])
-			self.s.add(AtLeast(hcandlist) + [1])
-				
-
+			hcandlist = list(self.hypos[hole][var] for hole in self.var_holes[var])
+			self.s.add(z3.AtLeast(hcandlist + [1]))
+	
+	def enum_subst(self):
+		'''enumerate possible completions of the code sketch'''
+		print('Sketch.enum_subst: ')
+		print('type_vars: ' + str(self.type_vars))
+		print('type_holes: ' + str(self.type_holes))
+		print('hole_vars: ' + str(self.hole_vars))
+		print('var_holes: ' + str(self.var_holes))
+		self._add_var_cands()
+		self._set_up_constraints()
+		while z3.sat == self.s.check():
+			print(self.s.model())
+			break
 
 	def gen_hypothesis(self):
 		pass
-
-
-
-
-		

@@ -37,10 +37,7 @@ def comma_join(tuplelist):
 	return ', '.join(map(lambda x: x[0], tuplelist))
 
 def hypo_var_gen(hole, var):
-	return 'h_' + str(hole) + var
+	return 'h_' + str(hole) + '_' + var
 
 def decompose_hypo_var(hypo):
 	return hypo.split()[1:3]
-
-def complete_sketch():
-	pass
