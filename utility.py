@@ -3,6 +3,12 @@ from data import *
 import json
 import itertools
 
+def parse_multiple_dirs(dirs):
+	l = []
+	for dir in dirs:
+		l.extend(parse_dir(dir))
+	return l
+
 def parse_dir(dir):
 	if dir[-1] != '/':
 		dir += '/'
@@ -39,5 +45,5 @@ def comma_join(tuplelist):
 def hypo_var_gen(hole, var):
 	return 'h_' + str(hole) + '_' + var
 
-def decompose_hypo_var(hypo):
-	return hypo.split()[1:3]
+def decompose_hypo_var(hypo_name):
+	return hypo_name.split('_')[1:3]

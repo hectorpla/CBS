@@ -20,9 +20,12 @@ class Synthesis(object):
 		if self.targetfunc is None:
 			raise parseError('format for the target function is incorrect')
 		self.net = PetriNet('NET for ' + sigtr['name'])
-		dir = sigtr['libdir']
-		self.comps = dict(((comp['name'], Component(comp, self.net)) for comp in parse_dir(dir)))
+		dirs = sigtr['libdirs']
+		if not isinstance(dirs, list):
+			dirs = [dirs]
+		self.comps = dict(((comp['name'], Component(comp, self.net)) for comp in parse_multiple_dirs(dirs)))
 		self.stategraph = None
+		# self.testpath = sigtr['testPath']
 
 	def setup(self):
 		start_marking = self.targetfunc.get_start_marking()
@@ -41,15 +44,23 @@ class Synthesis(object):
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
-			toprint, skline = self.comps[f].sketch(var_gen, counter) # sketch() return a tuple
+			variables = [(next(var_gen), self.comps[f].rtypes[i]) for i in range(self.comps[f].output_len())]
+			holes = [next(counter) for _ in range(self.comps[f].input_len())]
+			skline = SketchLine(variables, zip(holes, self.comps[f].typing_list()))
+			toprint = self.comps[f].sketch(variables, holes)
 			sketch.append('\t' + (toprint) + ' in')
 			sketch_ads.add_line(skline)
-			print('    ' + str(skline))
 		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
-		sketch.append('in #' + ', '.join(map(str, return_holes)))
+		sketch.append('\t#' + ', '.join(map(str, return_holes)))
 		sketch_ads.add_return_line(self.targetfunc, return_holes)
 		sketch_ads.enum_subst()
 		return sketch
+
+	def sketch_completion(self, sketch):
+		assert isinstance(sketch, Sketch)
+		sketch.enum_subst()
+	def print_sketch(self):
+		pass
 
 	def inc_len_sketch_enum(self, max_len):
 		for seq in self.stategraph.enumerate_sketch_l(max_len):
@@ -69,12 +80,21 @@ class Synthesis(object):
 		"""
 		raise NotImplementedError('not yet implemented')
 
-	def sketch_completion(self, sketch):
-		assert isinstance(sketch, Sketch)
-		sketch.enum_subst()
+	def test(self):
+		'''compile/test the code with testfil'''
+		raise NotImplementedError('not yet implemented')
+
+	def write_out(self, sketch, subst):
+		'''write the completed sketch into a file'''
+		raise NotImplementedError('not yet implemented')
+
 	def stat(self):
 		"""show statistics after synthesis"""
 		raise NotImplementedError('not yet implemented')
+
+class SketchFormatter(object):
+	pass
+
 class Signature(object):
 	"""A base class for Component and Target"""
 	def __init__(self, sigtr_dict):
@@ -140,28 +160,35 @@ class Component(Signature):
 		for place, weight in self._out.items():
 			self.net.add_output(place, self.name, MultiArc([Variable('var')] * weight))
 
-	def sketch(self, var_gen, hole_counter):
+	def typing_list(self):
+		'''return the function's parameter types '''
+		return list(map(lambda x: x[1], self.paras))
+
+	def sketch(self, varlist, holelist, substitution=None):
 		'''
 		outline the component function, in string form as well as abstract form(holes, variables)
 		'''
-		holes = []
-		variables = [(next(var_gen), self.rtypes[i]) for i in range(len(self.rtypes))]
+		# holes = []
+		# variables = [(next(var_gen), self.rtypes[i]) for i in range(len(self.rtypes))]
+		assert len(varlist) == self.output_len() and len(holelist) == self.input_len()
 		sk = "let "
-		sk += comma_join(variables)
+		sk += comma_join(varlist)
 		sk +=" = "
 		if self.name in ['^']:
 			assert len(self.paras) == 2
-			self.name = '(' + self.name + ')'
+			self.name = '(' + self.name + ')' # be careful about this inconsistency
 		sk += self.name
-		for pa, t in self.paras:
-			hole_num = next(hole_counter)
-			holes.append((hole_num, t))
-			sk += ' #' + str(hole_num) + '(' + t + ')'
-		return sk, SketchLine(holes, variables)
+		if substitution is None:
+			para2print = ('#' + str(hole) + '(' + typing + ')' for hole, typing in zip(holelist, self.typing_list()))
+		else:
+			para2print = (substitution[hole] for hole in holelist)
+		for param in para2print:
+			sk += ' ' + param
+		return sk
 
 class SketchLine(object):
 	'''An abstract data structure for a line of sketch(semantic of a line)'''
-	def __init__(self, holes, variables):
+	def __init__(self, variables, holes):
 		self._holes = holes # list of (hole#, type)
 		self._vars = variables # list of (var_name, type)
 	def __str__(self):
@@ -257,22 +284,31 @@ class Sketch(object):
 			if z3.is_true(m.eval(hyp)):
 				block.append(hyp)
 		self.s.add(z3.Not(z3.And(block)))
+		subst = block.copy()
+		list(map(lambda x: decompose_hypo_var(str(x)), subst)).sort()
+		print(subst)
 		return m
 
 	def enum_subst(self):
 		'''enumerate possible completions of the code sketch'''
+		import time
 		self._add_var_cands()
 		self._set_up_constraints()
-		if DEBUG:
-			print('Sketch.enum_subst: ')
-			print('type_vars: ' + str(self.type_vars))
-			print('type_holes: ' + str(self.type_holes))
-			print('hole_vars: ' + str(self.hole_vars))
-			print('var_holes: ' + str(self.var_holes))
-			print()
-		while z3.sat == self.s.check():
-			print('  -----',end='')
-			print(self._process_model())
+		# if DEBUG:
+		# 	print('Sketch.enum_subst: ')
+		# 	print('type_vars: ' + str(self.type_vars))
+		# 	print('type_holes: ' + str(self.type_holes))
+		# 	print('hole_vars: ' + str(self.hole_vars))
+		# 	print('var_holes: ' + str(self.var_holes))
+		# 	print()
+		while True:
+			start = time.clock()
+			if z3.sat == self.s.check():
+				print(time.clock() - start)
+				print('  -----',end='')
+				self._process_model()
+			else:
+				break
 
 	def gen_hypothesis(self):
 		pass
