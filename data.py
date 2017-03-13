@@ -25,6 +25,7 @@ class Synthesis(object):
 			dirs = [dirs]
 		self.comps = dict(((comp['name'], Component(comp, self.net)) for comp in parse_multiple_dirs(dirs)))
 		self.stategraph = None
+		self._synlen = 5
 		# self.testpath = sigtr['testPath']
 
 	def setup(self):
@@ -34,41 +35,47 @@ class Synthesis(object):
 			start=start_marking, end=end_marking, aug_graph='draws/clone_added.eps')
 		self.stategraph.build()
 
+	def set_syn_len(self, max_len):
+		self._synlen = max_len
 	def _gen_sketch(self, sequence):
+		'''create Sketch object for completion and SketchFormatter for output'''
 		counter = itertools.count(0)
 		var_gen = var_generator()
-		sketch = []
+		lines = []
 		sketch_ads = Sketch()
-		sketch.append(self.targetfunc.sigtr_sketch())
 		sketch_ads.add_signature(self.targetfunc)
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
 			variables = [(next(var_gen), self.comps[f].rtypes[i]) for i in range(self.comps[f].output_len())]
-			holes = [next(counter) for _ in range(self.comps[f].input_len())]
-			skline = SketchLine(variables, zip(holes, self.comps[f].typing_list()))
-			toprint = self.comps[f].sketch(variables, holes)
-			sketch.append('\t' + (toprint) + ' in')
+			holes = [next(counter) for i in range(self.comps[f].input_len())]
+			skline = SketchLine(self.comps[f], variables, list(zip(holes, self.comps[f].typing_list())))
+			lines.append(skline)
 			sketch_ads.add_line(skline)
 		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
-		sketch.append('\t#' + ', '.join(map(str, return_holes)))
-		sketch_ads.add_return_line(self.targetfunc, return_holes)
-		sketch_ads.enum_subst()
-		return sketch
+		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
+		lines.append(retline)
+		sketch_ads.add_line(retline)
+		return sketch_ads, SketchFormatter(self.targetfunc, lines)
 
 	def sketch_completion(self, sketch):
 		assert isinstance(sketch, Sketch)
 		sketch.enum_subst()
-	def print_sketch(self):
-		pass
-
-	def inc_len_sketch_enum(self, max_len):
-		for seq in self.stategraph.enumerate_sketch_l(max_len):
-			print(seq)
-			for line in self._gen_sketch(seq):
-				print(line)
-			print()
+	def print_sketch(self, lines):
+		for line in lines:
+			print(line)
 		print()
+	def enum_concrete_sketch(self):
+		'''enumerate completed sketch'''
+		for sk, skformatter in self.inc_len_sketch_enum():
+			sk.enum_subst()
+			self.print_sketch(skformatter.format_out())
+			print('-----------end seq-------------')
+	def inc_len_sketch_enum(self):
+		'''enumerate non-complete sketch'''
+		for seq in self.stategraph.enumerate_sketch_l(self._synlen):
+			print(seq)
+			yield self._gen_sketch(seq)
 
 	def non_rep_sketch_enum(self):
 		"""
@@ -80,20 +87,17 @@ class Synthesis(object):
 		"""
 		raise NotImplementedError('not yet implemented')
 
-	def test(self):
+	def _test(self):
 		'''compile/test the code with testfil'''
 		raise NotImplementedError('not yet implemented')
 
-	def write_out(self, sketch, subst):
+	def _write_out(self, sketch, subst):
 		'''write the completed sketch into a file'''
 		raise NotImplementedError('not yet implemented')
 
 	def stat(self):
 		"""show statistics after synthesis"""
 		raise NotImplementedError('not yet implemented')
-
-class SketchFormatter(object):
-	pass
 
 class Signature(object):
 	"""A base class for Component and Target"""
@@ -145,6 +149,9 @@ class Component(Signature):
 		self.net = petri
 		self._add_func()
 
+	def typing_list(self):
+		'''return the function's parameter types '''
+		return list(map(lambda x: x[1], self.paras))
 	def _add_func(self):
 		"""add transition to the Petri Net"""
 		for place in self._in:
@@ -160,16 +167,8 @@ class Component(Signature):
 		for place, weight in self._out.items():
 			self.net.add_output(place, self.name, MultiArc([Variable('var')] * weight))
 
-	def typing_list(self):
-		'''return the function's parameter types '''
-		return list(map(lambda x: x[1], self.paras))
-
 	def sketch(self, varlist, holelist, substitution=None):
-		'''
-		outline the component function, in string form as well as abstract form(holes, variables)
-		'''
-		# holes = []
-		# variables = [(next(var_gen), self.rtypes[i]) for i in range(len(self.rtypes))]
+		'''outline the component function in string form, either non-complete or complete ver.'''
 		assert len(varlist) == self.output_len() and len(holelist) == self.input_len()
 		sk = "let "
 		sk += comma_join(varlist)
@@ -187,8 +186,10 @@ class Component(Signature):
 		return sk
 
 class SketchLine(object):
-	'''An abstract data structure for a line of sketch(semantic of a line)'''
-	def __init__(self, variables, holes):
+	'''An abstract data structure for a line of sketch(semantic of a line)
+		sketch feature added'''
+	def __init__(self, comp, variables, holes):
+		self._comp = comp
 		self._holes = holes # list of (hole#, type)
 		self._vars = variables # list of (var_name, type)
 	def __str__(self):
@@ -197,6 +198,29 @@ class SketchLine(object):
 		return (hole for hole in self._holes)
 	def variables(self):
 		return (var for var in self._vars)
+	def sketch(self, subst=None):
+		'''take care of the return line'''
+		if self._comp is None:
+			if subst is None:
+				return ', '.join(map(lambda x: '#' + str(first_elem_of_tuple(x)), self._holes))
+			return ','.join([subst[hole] for hole in self._holes])
+		return self._comp.sketch(self._vars, list(map(first_elem_of_tuple, self._holes)), subst)
+
+class SketchFormatter(object):
+	'''a class that format up the systhesised codes'''
+	def __init__(self, sigtr, lines):
+		assert isinstance(sigtr, TargetFunc)
+		assert isinstance(lines[0], SketchLine)
+		self._signature = sigtr
+		self._lines = lines # list of SketchLine
+	def format_out(self, subst=None):
+		sk = []
+		sk.append(self._signature.sigtr_sketch())
+		for skline in self._lines[:-1]:
+			toprint = skline.sketch(subst)
+			sk.append('\t' + toprint + ' in')
+		sk.append('\t' + self._lines[-1].sketch(subst))
+		return sk
 
 class Sketch(object):
 	"""data structure for a code sketch in purpose to complete in SAT solver"""
@@ -242,14 +266,14 @@ class Sketch(object):
 				self.type_vars[typing] = set()
 			self.type_vars[typing].add(var)
 
-	def add_return_line(self, sigtr, holes):
-		"""add the returning holes"""
-		assert isinstance(sigtr, Signature)
-		for hole, typing in zip(holes, sigtr.rtypes):
-			self.hole_vars[hole] = self.type_vars[typing].copy()
-			if typing not in self.type_holes:
-				self.type_holes[typing] = set()
-			self.type_holes[typing].add(hole)
+	# def add_return_line(self, sigtr, holes):
+	# 	"""add the returning holes"""
+	# 	assert isinstance(sigtr, Signature)
+	# 	for hole, typing in line.holes():
+	# 		self.hole_vars[hole] = self.type_vars[typing].copy() # shallow copy
+	# 		if typing not in self.type_holes:
+	# 			self.type_holes[typing] = set()
+	# 		self.type_holes[typing].add(hole)
 
 	def _add_var_cands(self):
 		''' 
@@ -268,13 +292,15 @@ class Sketch(object):
 			for var in self.hole_vars[hole]:
 				self.hypos[hole][var] = z3.Bool(hypo_var_gen(hole, var))
 			vcandlist = list(self.hypos[hole].values())
-			print('HOLE CONSTRAINTS LIST: ' + str(vcandlist))
+			if DEBUG:
+				print('HOLE CONSTRAINTS LIST: ' + str(vcandlist))
 			self.s.add(z3.AtMost(vcandlist + [1])) # all add up to 0 or 1
 			self.s.add(z3.Or(vcandlist))
 
 		for var in self.var_holes:
 			hcandlist = list(self.hypos[hole][var] for hole in self.var_holes[var])
-			print('VAR CONSTRAINTS LIST ' + str(hcandlist))
+			if DEBUG:
+				print('VAR CONSTRAINTS LIST ' + str(hcandlist))
 			self.s.add(z3.AtLeast(hcandlist + [1]))
 	
 	def _process_model(self):
@@ -284,8 +310,15 @@ class Sketch(object):
 			if z3.is_true(m.eval(hyp)):
 				block.append(hyp)
 		self.s.add(z3.Not(z3.And(block)))
-		subst = block.copy()
-		list(map(lambda x: decompose_hypo_var(str(x)), subst)).sort()
+		assignment = block.copy()
+		assignment = map(lambda x: decompose_hypo_var(str(x)), assignment)
+		if DEBUG:
+			assignment = list(assignment)
+			assignment.sort()
+			print(assignment)
+		subst = {}
+		for hole, var in assignment:
+			subst[hole] = var
 		print(subst)
 		return m
 

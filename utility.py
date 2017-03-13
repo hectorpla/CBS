@@ -3,6 +3,8 @@ from data import *
 import json
 import itertools
 
+first_elem_of_tuple = lambda x: x[0]
+
 def parse_multiple_dirs(dirs):
 	l = []
 	for dir in dirs:
@@ -40,7 +42,7 @@ def comma_join(tuplelist):
 	'''used for generating parameter lists
 	input: [(paraName, paraType), ...]'''
 	assert len(tuplelist[0]) == 2
-	return ', '.join(map(lambda x: x[0], tuplelist))
+	return ', '.join(map(first_elem_of_tuple, tuplelist))
 
 def hypo_var_gen(hole, var):
 	return 'h_' + str(hole) + '_' + var

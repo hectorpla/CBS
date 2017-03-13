@@ -21,5 +21,6 @@ from data import *
 
 f = 'signatures/char2string.json'
 syns = Synthesis(f)
-syns.setup()
-syns.inc_len_sketch_enum(6)
+syns.setup() # prep for synthesis, i.e. construct PetriNet, build state graph, etc.
+syns.set_syn_len(3) # set the maximum program length
+syns.enum_concrete_sketch()
