@@ -3,6 +3,7 @@ import snakes.plugins
 snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
 from snk import *
 import z3
+import subprocess
 
 DEBUG = True
 
@@ -23,10 +24,14 @@ class Synthesis(object):
 		dirs = sigtr['libdirs']
 		if not isinstance(dirs, list):
 			dirs = [dirs]
+		self.dirs = dirs
 		self.comps = dict(((comp['name'], Component(comp, self.net)) for comp in parse_multiple_dirs(dirs)))
 		self.stategraph = None
 		self._synlen = 5
-		# self.testpath = sigtr['testPath']
+		self.testpath = sigtr['testpath']
+
+	def draw_net(self):
+		self.net.draw('draws/' + self.targetfunc.name + '.eps')
 
 	def setup(self):
 		start_marking = self.targetfunc.get_start_marking()
@@ -37,13 +42,12 @@ class Synthesis(object):
 
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
+
 	def _gen_sketch(self, sequence):
 		'''create Sketch object for completion and SketchFormatter for output'''
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		lines = []
-		sketch_ads = Sketch()
-		sketch_ads.add_signature(self.targetfunc)
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
@@ -51,26 +55,31 @@ class Synthesis(object):
 			holes = [next(counter) for i in range(self.comps[f].input_len())]
 			skline = SketchLine(self.comps[f], variables, list(zip(holes, self.comps[f].typing_list())))
 			lines.append(skline)
-			sketch_ads.add_line(skline)
+		# set up return line
 		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
 		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
 		lines.append(retline)
-		sketch_ads.add_line(retline)
-		return sketch_ads, SketchFormatter(self.targetfunc, lines)
+		return Sketch(self.targetfunc, lines), SketchFormatter(self.targetfunc, lines)
 
-	def sketch_completion(self, sketch):
-		assert isinstance(sketch, Sketch)
-		sketch.enum_subst()
-	def print_sketch(self, lines):
-		for line in lines:
-			print(line)
-		print()
+	def start(self):
+		'''interface for outside'''
+		for sketch in self.enum_concrete_sketch():
+			if self._test(sketch, self.targetfunc.name):
+				break
+			print('FAILED')
+			# input("PRESS ENTER TO CONTINUE.\n")
+
 	def enum_concrete_sketch(self):
-		'''enumerate completed sketch'''
+		'''enumerate completed sketch: wrapper for '''
 		for sk, skformatter in self.inc_len_sketch_enum():
-			sk.enum_subst()
-			self.print_sketch(skformatter.format_out())
-			print('-----------end seq-------------')
+			print_sketch(skformatter.format_out())
+			for sub in sk.enum_subst():
+				print('--->')
+				sketch = skformatter.format_out(sub)
+				print_sketch(sketch)
+				yield sketch
+			print('-----------one seq ended-------------')
+			
 	def inc_len_sketch_enum(self):
 		'''enumerate non-complete sketch'''
 		for seq in self.stategraph.enumerate_sketch_l(self._synlen):
@@ -87,13 +96,26 @@ class Synthesis(object):
 		"""
 		raise NotImplementedError('not yet implemented')
 
-	def _test(self):
-		'''compile/test the code with testfil'''
-		raise NotImplementedError('not yet implemented')
+	def _test(self, testsketch, outname):
+		'''compile/test the code against user-provided tests'''
+		outpath = 'out/' + outname + '.ml'
+		self._write_out(testsketch, outpath)
+		test_command = ['ocaml', outpath]
+		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
+		return b'true' == subproc.communicate()[0]
 
-	def _write_out(self, sketch, subst):
+	def _write_out(self, sketch, outpath):
 		'''write the completed sketch into a file'''
-		raise NotImplementedError('not yet implemented')
+		with open(outpath, 'w') as targetfile:
+			for dir in self.dirs:
+				module_name = last_component(dir)
+				module_name = module_name[0].upper() + module_name[1:]
+				# print(module_name)
+				targetfile.write('open ' + module_name + '\n')
+			for line in sketch:
+				targetfile.write(line + '\n')
+			with open(self.testpath) as test:
+				targetfile.write(test.read())
 
 	def stat(self):
 		"""show statistics after synthesis"""
@@ -140,7 +162,7 @@ class TargetFunc(Signature):
 		return Marking(ws)
 	def sigtr_sketch(self):
 		"""write out the function definition"""
-		return 'let ' + self.name + ' ' + comma_join(self.paras) + ' ='
+		return 'let ' + self.name + ' ' + sep_join(self.paras) + ' ='
 
 class Component(Signature):
 	"""A function in the specified library"""
@@ -160,6 +182,8 @@ class Component(Signature):
 		for place in self._out:
 			if not self.net.has_place(place):
 				self.net.add_place(Place(place))
+		# print(self.name)
+		# issue: functions with same name from different modules
 		assert not self.net.has_transition(self.name)
 		self.net.add_transition(Transition(self.name))
 		for place, weight in self._in.items():
@@ -203,7 +227,7 @@ class SketchLine(object):
 		if self._comp is None:
 			if subst is None:
 				return ', '.join(map(lambda x: '#' + str(first_elem_of_tuple(x)), self._holes))
-			return ','.join([subst[hole] for hole in self._holes])
+			return ','.join([subst[hole] for hole, _ in self._holes])
 		return self._comp.sketch(self._vars, list(map(first_elem_of_tuple, self._holes)), subst)
 
 class SketchFormatter(object):
@@ -224,13 +248,18 @@ class SketchFormatter(object):
 
 class Sketch(object):
 	"""data structure for a code sketch in purpose to complete in SAT solver"""
-	def __init__(self):
+	def __init__(self, signature, sklines):
 		self.type_vars = {} # each bucket stores the variables having the same type
 		self.type_holes = {} # each bucket contains places
 		self.var_holes = {} # each bucket(keyed with variable) contains candidate places
 		self.hole_vars = {} # each bucket contains variables
 		self.s = z3.Solver()
 		self.hypos = {}
+		self.init_frame(signature, sklines)
+	def init_frame(self, signature, sklines):
+		self._add_signature(signature)
+		for skline in sklines:
+			self._add_line(skline)
 	def _vars(self):
 		for typing in self.type_vars:
 			for var in self.type_vars[typing]:
@@ -239,18 +268,18 @@ class Sketch(object):
 		for hole_cands in self.hypos.values():
 			for hyp in hole_cands.values():
 				yield hyp
-	def add_signature(self, sigtr):
+	def _add_signature(self, sigtr):
 		'''Simply add parameters(variables) into types, and set up variable constraints frame'''
 		assert isinstance(sigtr, Signature)
 		for name, typing in sigtr.paras:
-			if typing not in self.type_holes:
+			if typing not in self.type_vars:
 				self.type_vars[typing] = set()
 			self.type_vars[typing].add(name)
 			self.var_holes[name] = set()
 		# print('Sketch.add_signature: ')
-		# print('type_holes ' + str(self.type_holes))
+		# print('type_vars ' + str(self.type_vars))
 
-	def add_line(self, line):
+	def _add_line(self, line):
 		'''
 		A Synthesis instance use it: when encountering every hole, find all candidate variables
 		that will be filled here; at the same time, append holes to type-buckets
@@ -265,15 +294,6 @@ class Sketch(object):
 			if typing not in self.type_vars:
 				self.type_vars[typing] = set()
 			self.type_vars[typing].add(var)
-
-	# def add_return_line(self, sigtr, holes):
-	# 	"""add the returning holes"""
-	# 	assert isinstance(sigtr, Signature)
-	# 	for hole, typing in line.holes():
-	# 		self.hole_vars[hole] = self.type_vars[typing].copy() # shallow copy
-	# 		if typing not in self.type_holes:
-	# 			self.type_holes[typing] = set()
-	# 		self.type_holes[typing].add(hole)
 
 	def _add_var_cands(self):
 		''' 
@@ -319,8 +339,8 @@ class Sketch(object):
 		subst = {}
 		for hole, var in assignment:
 			subst[hole] = var
-		print(subst)
-		return m
+		# print(subst)
+		return subst
 
 	def enum_subst(self):
 		'''enumerate possible completions of the code sketch'''
@@ -339,9 +359,7 @@ class Sketch(object):
 			if z3.sat == self.s.check():
 				print(time.clock() - start)
 				print('  -----',end='')
-				self._process_model()
+				yield self._process_model()
 			else:
 				break
 
-	def gen_hypothesis(self):
-		pass

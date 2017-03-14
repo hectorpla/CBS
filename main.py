@@ -19,8 +19,9 @@ from data import *
 # 		pass
 # 	print()
 
-f = 'signatures/char2string.json'
+f = 'signatures/stringbytes2unit.json'
 syns = Synthesis(f)
+syns.draw_net()
 syns.setup() # prep for synthesis, i.e. construct PetriNet, build state graph, etc.
-syns.set_syn_len(3) # set the maximum program length
-syns.enum_concrete_sketch()
+syns.set_syn_len(5) # set the maximum program length
+syns.start()

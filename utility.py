@@ -38,14 +38,25 @@ def var_generator():
 		yield 'v' + str(cur)
 		cur += 1
 
-def comma_join(tuplelist):
+def sep_join(tuplelist, sep=' '):
 	'''used for generating parameter lists
 	input: [(paraName, paraType), ...]'''
 	assert len(tuplelist[0]) == 2
-	return ', '.join(map(first_elem_of_tuple, tuplelist))
+	return sep.join(map(first_elem_of_tuple, tuplelist))
+
+def comma_join(tuplelist):
+	return sep_join(tuplelist, ', ')
 
 def hypo_var_gen(hole, var):
 	return 'h_' + str(hole) + '_' + var
 
 def decompose_hypo_var(hypo_name):
-	return hypo_name.split('_')[1:3]
+	decomposed = hypo_name.split('_')
+	return int(decomposed[1]), decomposed[2]
+
+def last_component(path):
+	return [c for c in path.split('/') if c is not ''][-1]
+
+def print_sketch(sketch):
+	for line in sketch:
+		print(line)
