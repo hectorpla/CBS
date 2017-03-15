@@ -38,6 +38,9 @@ def var_generator():
 		yield 'v' + str(cur)
 		cur += 1
 
+def is_variable(name):
+	return name.startswith('v') and all(map(str.isdigit, name[1:]))
+
 def sep_join(tuplelist, sep=' '):
 	'''used for generating parameter lists
 	input: [(paraName, paraType), ...]'''

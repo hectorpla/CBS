@@ -6,6 +6,7 @@ import z3
 import subprocess
 
 DEBUG = True
+PAUSE = True
 
 class parseError(Exception):
 	def __init__(self, msg):
@@ -43,58 +44,15 @@ class Synthesis(object):
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
 
-	def _gen_sketch(self, sequence):
-		'''create Sketch object for completion and SketchFormatter for output'''
-		counter = itertools.count(0)
-		var_gen = var_generator()
-		lines = []
-		for f in sequence:
-			if f.startswith('clone_'): # watchout: mind the name confilction 
-				continue
-			variables = [(next(var_gen), self.comps[f].rtypes[i]) for i in range(self.comps[f].output_len())]
-			holes = [next(counter) for i in range(self.comps[f].input_len())]
-			skline = SketchLine(self.comps[f], variables, list(zip(holes, self.comps[f].typing_list())))
-			lines.append(skline)
-		# set up return line
-		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
-		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
-		lines.append(retline)
-		return Sketch(self.targetfunc, lines), SketchFormatter(self.targetfunc, lines)
-
 	def start(self):
 		'''interface for outside'''
 		for sketch in self.enum_concrete_sketch():
 			if self._test(sketch, self.targetfunc.name):
+				print('SUCCEEDED!!!')
 				break
 			print('FAILED')
-			# input("PRESS ENTER TO CONTINUE.\n")
-
-	def enum_concrete_sketch(self):
-		'''enumerate completed sketch: wrapper for '''
-		for sk, skformatter in self.inc_len_sketch_enum():
-			print_sketch(skformatter.format_out())
-			for sub in sk.enum_subst():
-				print('--->')
-				sketch = skformatter.format_out(sub)
-				print_sketch(sketch)
-				yield sketch
-			print('-----------one seq ended-------------')
-			
-	def inc_len_sketch_enum(self):
-		'''enumerate non-complete sketch'''
-		for seq in self.stategraph.enumerate_sketch_l(self._synlen):
-			print(seq)
-			yield self._gen_sketch(seq)
-
-	def non_rep_sketch_enum(self):
-		"""
-		for seq in s.enumerate_sketch():
-		print(seq)
-		for line in gen_sketch(comps, seq):
-			print(line)
-		print()
-		"""
-		raise NotImplementedError('not yet implemented')
+			if PAUSE:
+				input("PRESS ENTER TO CONTINUE.\n")
 
 	def _test(self, testsketch, outname):
 		'''compile/test the code against user-provided tests'''
@@ -116,6 +74,52 @@ class Synthesis(object):
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
+
+	def enum_concrete_sketch(self):
+		'''enumerate completed sketch: wrapper for '''
+		for sk, skformatter in self.inc_len_sketch_enum():
+			print_sketch(skformatter.format_out())
+			for sub in sk.enum_subst():
+				print('--->')
+				sketch = skformatter.format_out(sub)
+				print_sketch(sketch)
+				yield sketch
+			print('-----------one seq ended-------------')
+
+	def inc_len_sketch_enum(self):
+		'''enumerate non-complete sketch'''
+		for seq in self.stategraph.enumerate_sketch_l(self._synlen):
+			print(seq)
+			yield self._gen_sketch(seq)
+
+	def non_rep_sketch_enum(self):
+		"""
+		for seq in s.enumerate_sketch():
+		print(seq)
+		for line in gen_sketch(comps, seq):
+			print(line)
+		print()
+		"""
+		raise NotImplementedError('not yet implemented')
+
+	def _gen_sketch(self, sequence):
+		'''create Sketch object for completion and SketchFormatter for output'''
+		counter = itertools.count(0)
+		var_gen = var_generator()
+		lines = []
+		for f in sequence:
+			if f.startswith('clone_'): # watchout: mind the name confilction 
+				continue
+			# ocaml specific
+			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in self.comps[f].rtypes]
+			holes = [next(counter) for i in range(self.comps[f].input_len())]
+			skline = SketchLine(self.comps[f], variables, list(zip(holes, self.comps[f].param_types())))
+			lines.append(skline)
+		# set up return line
+		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
+		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
+		lines.append(retline)
+		return Sketch(self.targetfunc, lines), SketchFormatter(self.targetfunc, lines)
 
 	def stat(self):
 		"""show statistics after synthesis"""
@@ -171,7 +175,10 @@ class Component(Signature):
 		self.net = petri
 		self._add_func()
 
-	def typing_list(self):
+	def id(self):
+		return self.name
+
+	def param_types(self):
 		'''return the function's parameter types '''
 		return list(map(lambda x: x[1], self.paras))
 	def _add_func(self):
@@ -182,27 +189,26 @@ class Component(Signature):
 		for place in self._out:
 			if not self.net.has_place(place):
 				self.net.add_place(Place(place))
-		# print(self.name)
 		# issue: functions with same name from different modules
-		assert not self.net.has_transition(self.name)
-		self.net.add_transition(Transition(self.name))
+		assert not self.net.has_transition(self.id())
+		self.net.add_transition(Transition(self.id()))
 		for place, weight in self._in.items():
-			self.net.add_input(place, self.name, MultiArc([Variable('var')] * weight))
+			self.net.add_input(place, self.id(), MultiArc([Variable('var')] * weight))
 		for place, weight in self._out.items():
-			self.net.add_output(place, self.name, MultiArc([Variable('var')] * weight))
+			self.net.add_output(place, self.id(), MultiArc([Variable('var')] * weight))
 
 	def sketch(self, varlist, holelist, substitution=None):
 		'''outline the component function in string form, either non-complete or complete ver.'''
 		assert len(varlist) == self.output_len() and len(holelist) == self.input_len()
 		sk = "let "
 		sk += comma_join(varlist)
-		sk +=" = "
+		sk += " = "
 		if self.name in ['^']:
 			assert len(self.paras) == 2
 			self.name = '(' + self.name + ')' # be careful about this inconsistency
 		sk += self.name
 		if substitution is None:
-			para2print = ('#' + str(hole) + '(' + typing + ')' for hole, typing in zip(holelist, self.typing_list()))
+			para2print = ('#' + str(hole) + '(' + typing + ')' for hole, typing in zip(holelist, self.param_types()))
 		else:
 			para2print = (substitution[hole] for hole in holelist)
 		for param in para2print:
@@ -291,6 +297,7 @@ class Sketch(object):
 				self.type_holes[typing] = set()
 			self.type_holes[typing].add(hole)
 		for var, typing in line.variables():
+			assert is_variable(var)
 			if typing not in self.type_vars:
 				self.type_vars[typing] = set()
 			self.type_vars[typing].add(var)
@@ -347,13 +354,13 @@ class Sketch(object):
 		import time
 		self._add_var_cands()
 		self._set_up_constraints()
-		# if DEBUG:
-		# 	print('Sketch.enum_subst: ')
-		# 	print('type_vars: ' + str(self.type_vars))
-		# 	print('type_holes: ' + str(self.type_holes))
-		# 	print('hole_vars: ' + str(self.hole_vars))
-		# 	print('var_holes: ' + str(self.var_holes))
-		# 	print()
+		if DEBUG:
+			print('Sketch.enum_subst: ')
+			print('type_vars: ' + str(self.type_vars))
+			print('type_holes: ' + str(self.type_holes))
+			print('hole_vars: ' + str(self.hole_vars))
+			print('var_holes: ' + str(self.var_holes))
+			print()
 		while True:
 			start = time.clock()
 			if z3.sat == self.s.check():
