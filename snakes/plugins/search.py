@@ -143,6 +143,11 @@ def extend(module):
 					% (place_name, W[place_name]))
 				expr.globals.attach(this_net.globals)
 				trans.guard = expr
+			# preventing generating tokens in unit place: remove all the ingoing edges to unit
+			# maybe not a good solution!!!
+			if self.net.has_place('unit'):
+				for tran in self.net.pre('unit'):
+					self.net.remove_output('unit', tran)
 			if aug_graph != None: # gv plugin should be loaded before this module
 				this_net.draw(aug_graph)
 			del W
@@ -151,6 +156,11 @@ def extend(module):
 			targets = []
 			for place in self.end_marking:
 				targets.append(place)
+			# functions with unit return type allowed, logic hidden to user
+			# this modification, along with ruling out ingoings to place "unit" causes
+			# non-determination of drawing the state graph
+			if self.net.has_place('unit'): 
+				targets.append('unit')
 			return self.net.reachables_places(targets)
 
 		def build_until(self):

@@ -5,8 +5,8 @@ from snk import *
 import z3
 import subprocess
 
-DEBUG = True
-PAUSE = True
+DEBUG = False
+PAUSE = False
 
 class parseError(Exception):
 	def __init__(self, msg):
@@ -33,6 +33,9 @@ class Synthesis(object):
 
 	def draw_net(self):
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
+
+	def draw_state_graph(self):
+		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
 
 	def setup(self):
 		start_marking = self.targetfunc.get_start_marking()
@@ -75,15 +78,27 @@ class Synthesis(object):
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
 
+	def id_sketches(self):
+		'''return one of parameters'''
+		# for only one return value
+		tgt = self.targetfunc.rtypes[0]
+		for para in self.targetfunc.params_of_type(tgt):
+			sklines = [SketchLine(None, [], [(0, tgt)])] # single hole
+			formatter = SketchFormatter(self.targetfunc, sklines)
+			lines = formatter.format_out({0:para})
+			print_sketch(lines)
+			yield lines
+
 	def enum_concrete_sketch(self):
-		'''enumerate completed sketch: wrapper for '''
+		'''enumerate completed sketch'''
+		yield from self.id_sketches() # identity functions
 		for sk, skformatter in self.inc_len_sketch_enum():
 			print_sketch(skformatter.format_out())
-			for sub in sk.enum_subst():
+			for concrtsk in sk.enum_subst():
 				print('--->')
-				sketch = skformatter.format_out(sub)
-				print_sketch(sketch)
-				yield sketch
+				concretelines = skformatter.format_out(concrtsk)
+				print_sketch(concretelines)
+				yield concretelines
 			print('-----------one seq ended-------------')
 
 	def inc_len_sketch_enum(self):
@@ -149,6 +164,8 @@ class Signature(object):
 		return len(self.paras)
 	def output_len(self):
 		return len(self.rtypes)
+	def params_of_type(self, t):
+		return list(para for para, typing in self.paras if typing == t)
 
 class TargetFunc(Signature):
 	def __init__(self, info):
@@ -297,6 +314,7 @@ class Sketch(object):
 				self.type_holes[typing] = set()
 			self.type_holes[typing].add(hole)
 		for var, typing in line.variables():
+			if not is_variable(var): continue # don't add _(unit into the variable list)
 			assert is_variable(var)
 			if typing not in self.type_vars:
 				self.type_vars[typing] = set()
