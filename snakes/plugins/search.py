@@ -103,55 +103,37 @@ def extend(module):
 
 	class StateGraph(module.StateGraph):
 		def __init__(self, net, end=None, start=None, aug_graph=None):
-			if start is not None:
-				old = net.get_marking()
-				net.set_marking(start)
-			module.StateGraph.__init__(self, net)
-			if start is not None:
-				net.set_marking(old)
-			W = {} # the max outgoing weights for places
+			assert start is not None
+			assert end is not None
+			module.StateGraph.__init__(self, net) # a new petri net is created here
 			# this net will be augmented by clone transitions and fire-restrictions
-			this_net = self.net
-			if end is None:
-				raise searchError(self, "end marking not specified")
+			self.net.set_marking(start)
 			self.end_marking = end
-			# clone transition for each type
-			for place in this_net.place():
-				t = place.name
-				tr = 'clone_' + t
-				W[t] = place.max_out() # utility.max_out(place)
-				this_net.add_transition(Transition(tr))
-				this_net.add_input(t, tr, Variable(t[:3]))
-				this_net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
+			self._add_clones()
+			# the max outgoing weights for places
+			W = dict((place.name, place.max_out()) for place in self.net.place())
 			# find all places that can be backwards reachable from the end marking
 			useful_places = self._useful_places()
 			print("~~~~~~~~~~~~~Useful places:", useful_places, "~~~~~~~~~~~~~")
-			# let the net be evaluable in the local context itself
-			this_net.globals._env['this_net'] = this_net # not safe
+			# let the net be evaluable in the local context itself, not safe
+			self.net.globals._env['this_net'] = self.net
 			# add guards for transition
-			for trans in this_net.transition():
-				unuseful = (not (place in useful_places) for place in trans.post.keys())
-				if all(unuseful): # prune unecessary places for tokens to go
-					trans.guard = Expression("False")
-					continue
-				if trans.is_nonincreasing(): # special case
-					continue
-				# for function that has only one return value, !need! to be extended
-				place_name = list(trans.post.keys())[0] 
-				place = this_net.place(place_name)
-				expr = Expression("len(this_net.place('%s').tokens) <= %d" 
-					% (place_name, W[place_name]))
-				expr.globals.attach(this_net.globals)
-				trans.guard = expr
+			self._set_fire_restrictions(W, useful_places)
 			# preventing generating tokens in unit place: remove all the ingoing edges to unit
 			# maybe not a good solution!!!
 			if self.net.has_place('unit'):
 				for tran in self.net.pre('unit'):
 					self.net.remove_output('unit', tran)
 			if aug_graph != None: # gv plugin should be loaded before this module
-				this_net.draw(aug_graph)
+				self.net.draw(aug_graph)
 			del W
-
+		def _add_clones(self):
+			for place in self.net.place(): # clone transition for each type
+				t = place.name
+				tr = 'clone_' + t
+				self.net.add_transition(Transition(tr))
+				self.net.add_input(t, tr, Variable(t[:3]))
+				self.net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
 		def _useful_places(self):
 			targets = []
 			for place in self.end_marking:
@@ -162,6 +144,21 @@ def extend(module):
 			if self.net.has_place('unit'): 
 				targets.append('unit')
 			return self.net.reachables_places(targets)
+		def _set_fire_restrictions(self, W, useful_places):
+			for trans in self.net.transition():
+				unuseful = (not (place in useful_places) for place in trans.post.keys())
+				if all(unuseful): # prune unecessary places for tokens to go
+					trans.guard = Expression("False")
+					continue
+				if trans.is_nonincreasing(): # special case
+					continue
+				# for function that has only one return value, !need! to be extended
+				place_name = list(trans.post.keys())[0] 
+				place = self.net.place(place_name)
+				expr = Expression("len(this_net.place('%s').tokens) <= %d" 
+					% (place_name, W[place_name]))
+				expr.globals.attach(self.net.globals)
+				trans.guard = expr
 
 		def build_until(self):
 			for state in self._build():
@@ -275,7 +272,4 @@ def extend(module):
 				route.pop()
 		# for test
 
-		def _iter_deepening(self, max_depth):
-			"""search for path with iter""" 
-			pass
 	return Place, Transition, PetriNet, StateGraph

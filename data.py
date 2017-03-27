@@ -2,6 +2,8 @@ from utility import *
 import snakes.plugins
 snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
 from snk import *
+
+import copy
 import z3
 import subprocess
 
@@ -30,6 +32,12 @@ class Synthesis(object):
 		self.stategraph = None
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
+	def _branch_out(self, startmrk, brchname=None):
+		'''create a new branch that does the subtask of synthesis(a if-else branch of pattern matching) '''
+		subsyn = copy.copy(self)
+		assert self.stategraph is not None
+		subsyn.stategraph = StateGraph(start=startmrk)
+		return subsyn
 
 	def draw_net(self):
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
