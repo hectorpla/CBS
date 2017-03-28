@@ -7,6 +7,8 @@ import copy
 import z3
 import subprocess
 
+PRIMITIVE_TYPES = ['bool', 'int', 'char', 'string']
+
 DEBUG = False
 PAUSE = False
 
@@ -15,6 +17,15 @@ class parseError(Exception):
 		self.msg = msg
 	def __str__(self):
 		return repr(msg)
+
+class SynBranch(object):
+	'''basically do the same work as synthesis'''
+	def __init__(self, systhesis):
+		self.synt = systhesis
+	def enum_brch_sketch(self):
+		self.synt.setup()
+		for sketch in self.synt.enum_concrete_sketch():
+			yield sketch[1:] # ignore the signature
 
 class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
@@ -36,7 +47,7 @@ class Synthesis(object):
 		'''create a new branch that does the subtask of synthesis(a if-else branch of pattern matching) '''
 		subsyn = copy.copy(self)
 		assert self.stategraph is not None
-		subsyn.stategraph = StateGraph(start=startmrk)
+		subsyn.stategraph = StateGraph(self.net, start=startmrk, end=self.stategraph)
 		return subsyn
 
 	def draw_net(self):
@@ -88,8 +99,7 @@ class Synthesis(object):
 
 	def id_sketches(self):
 		'''return one of parameters'''
-		# for only one return value
-		tgt = self.targetfunc.rtypes[0]
+		tgt = self.targetfunc.rtypes[0] # for only one return value
 		for para in self.targetfunc.params_of_type(tgt):
 			sklines = [SketchLine(None, [], [(0, tgt)])] # single hole
 			formatter = SketchFormatter(self.targetfunc, sklines)
@@ -133,10 +143,13 @@ class Synthesis(object):
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
+			func_id = restore_id(f)
 			# ocaml specific
-			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in self.comps[f].rtypes]
-			holes = [next(counter) for i in range(self.comps[f].input_len())]
-			skline = SketchLine(self.comps[f], variables, list(zip(holes, self.comps[f].param_types())))
+			variables = \
+				[('_' if rt == 'unit' else next(var_gen), rt) for rt in self.comps[func_id].rtypes]
+			holes = [next(counter) for i in range(self.comps[func_id].input_len())]
+			skline = SketchLine(self.comps[func_id], variables, 
+				list(zip(holes, self.comps[func_id].param_types())))
 			lines.append(skline)
 		# set up return line
 		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
@@ -198,7 +211,7 @@ class Component(Signature):
 	def __init__(self, signature, petri):
 		super(Component, self).__init__(signature)
 		self.net = petri
-		self._add_func()
+		self._add_funcs()
 
 	def id(self):
 		return self.name
@@ -206,21 +219,29 @@ class Component(Signature):
 	def param_types(self):
 		'''return the function's parameter types '''
 		return list(map(lambda x: x[1], self.paras))
-	def _add_func(self):
+	def _add_funcs(self):
+		inlen = len(self._in)
+		in_and_out = list(itertools.chain(self._in.keys(), self._out.keys()))
+		for instance, subst in instantiate_generics(in_and_out, PRIMITIVE_TYPES):
+			print(instance)
+			i = list(zip(instance[:inlen], self._in.values()))
+			o = list(zip(instance[inlen:], self._out.values()))
+			self._add_func(i, o, func_id_in_petri(self.id(), subst))
+	def _add_func(self, _in, _out, funcname):
 		"""add transition to the Petri Net"""
-		for place in self._in:
+		for place, _ in _in:
 			if not self.net.has_place(place):
 				self.net.add_place(Place(place))
-		for place in self._out:
+		for place, _ in _out:
 			if not self.net.has_place(place):
 				self.net.add_place(Place(place))
 		# issue: functions with same name from different modules
-		assert not self.net.has_transition(self.id())
-		self.net.add_transition(Transition(self.id()))
-		for place, weight in self._in.items():
-			self.net.add_input(place, self.id(), MultiArc([Variable('var')] * weight))
-		for place, weight in self._out.items():
-			self.net.add_output(place, self.id(), MultiArc([Variable('var')] * weight))
+		assert not self.net.has_transition(funcname)
+		self.net.add_transition(Transition(funcname))
+		for place, weight in _in:
+			self.net.add_input(place, funcname, MultiArc([Variable('var')] * weight))
+		for place, weight in _out:
+			self.net.add_output(place, funcname, MultiArc([Variable('var')] * weight))
 
 	def sketch(self, varlist, holelist, substitution=None):
 		'''outline the component function in string form, either non-complete or complete ver.'''
