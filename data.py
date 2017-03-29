@@ -143,13 +143,17 @@ class Synthesis(object):
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
-			func_id = restore_id(f)
-			# ocaml specific
-			variables = \
-				[('_' if rt == 'unit' else next(var_gen), rt) for rt in self.comps[func_id].rtypes]
+			func_id = restore_id(f) # recover the name of the function from ground tag
+			subst = dict(zip(ext_syms_list(self.comps[func_id].io_types()), ground_terms(f)))
+			vartype = [instantiate(t, subst) for t in self.comps[func_id].rtypes]
+			holetype = [instantiate(t, subst) for t in self.comps[func_id].param_types()]
+			print(subst)
+			print(vartype)
+			print(holetype)
+			# ocaml specific: unit type
+			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartype]
 			holes = [next(counter) for i in range(self.comps[func_id].input_len())]
-			skline = SketchLine(self.comps[func_id], variables, 
-				list(zip(holes, self.comps[func_id].param_types())))
+			skline = SketchLine(self.comps[func_id], variables, list(zip(holes, holetype)))
 			lines.append(skline)
 		# set up return line
 		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
@@ -219,12 +223,15 @@ class Component(Signature):
 	def param_types(self):
 		'''return the function's parameter types '''
 		return list(map(lambda x: x[1], self.paras))
+	def io_types(self):
+		'''return the concated list of in and out types, in first'''
+		return list(itertools.chain(self._in.keys(), self._out.keys())) 
 	def _add_funcs(self):
 		inlen = len(self._in)
-		in_and_out = list(itertools.chain(self._in.keys(), self._out.keys()))
-		for instance, subst in instantiate_generics(in_and_out, PRIMITIVE_TYPES):
-			print(instance)
-			i = list(zip(instance[:inlen], self._in.values()))
+		# in_and_out = list(itertools.chain(self._in.keys(), self._out.keys())) 
+		for instance, subst in instantiate_generics(self.io_types(), PRIMITIVE_TYPES):
+			# print(instance)
+			i = list(zip(instance[:inlen], self._in.values())) # {"'a":2} -> [(ground("'a"), 2)]
 			o = list(zip(instance[inlen:], self._out.values()))
 			self._add_func(i, o, func_id_in_petri(self.id(), subst))
 	def _add_func(self, _in, _out, funcname):

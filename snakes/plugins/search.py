@@ -105,9 +105,11 @@ def extend(module):
 		def __init__(self, net, end=None, start=None, aug_graph=None):
 			assert start is not None
 			assert end is not None
+			old = net.get_marking()
+			net.set_marking(start) # < tricky construct for stategraph
 			module.StateGraph.__init__(self, net) # a new petri net is created here
 			# this net will be augmented by clone transitions and fire-restrictions
-			self.net.set_marking(start)
+			net.set_marking(old) # > make net clean again
 			self.end_marking = end
 			self._add_clones()
 			# the max outgoing weights for places

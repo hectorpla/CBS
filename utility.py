@@ -77,34 +77,51 @@ def recompose_types(components):
 def ext_symbols(tstring):
 	return set(re.findall(RE_GENERICS, tstring))
 def ext_syms_list(tlist):
-	result = set()
+	syms = set()
 	for t in tlist:
-		result |= ext_symbols(t)
-	return result
+		syms |= ext_symbols(t)
+	return sorted(syms) # sorted to made the order guarantee
 class BindRepl(object):
 	def __init__(self, mapping):
 		self.mapping = mapping
 	def __call__(self, matchobj):
 		return self.mapping[matchobj.group(0)]
+def instantiate(gtype, subst):
+	assert isinstance(gtype, str)
+	bindrepl = BindRepl(subst)
+	return re.sub(RE_GENERICS, bindrepl, gtype)
 def instantiate_generics(tlist, typepool):
-	'''given all types in a function as a list, return the grounded types'''
+	''' given all types in a function as a list, 
+		return the grounded types and symbol bindings
+	'''
 	assert isinstance(typepool, list)
 	symbols = ext_syms_list(tlist)
 	if len(symbols) == 0:
-		yield tlist
+		yield tlist, {}
 		return # mind python version
 	selections = itertools.combinations_with_replacement(typepool, len(symbols))
 	for sel in selections:
 		subst = dict(zip(symbols,sel))
 		bindrepl = BindRepl(subst)
-		yield [re.sub(RE_GENERICS, bindrepl, t) for t in tlist], subst # not good?
-def func_id_in_petri(orig, subst):
-	''' example: val map : ('a -> 'b) -> 'a list -> 'b list with substitution {'a:int, 'b:bool}
-	    -> map_int_bool
-	'''
-	sublist = sorted(subst.items())
-	return '_'.join(itertools.chain([orig], map(second_elem_of_tuple, sublist)))
+		yield [instantiate(t, subst) for t in tlist], subst # not good?
 
-def restore_id(composite):
+GROUND_SEP = '-'
+def func_id_in_petri(orig, subst):
+	''' example: 
+			val map : ('a -> 'b) -> 'a list -> 'b list with substitution {'a:int, 'b:bool}
+	    	-> map_int_bool
+	'''
+	sublist = sorted(subst.items()) 
+	return GROUND_SEP.join(itertools.chain([orig], map(second_elem_of_tuple, sublist)))
+
+def ground_terms(composite_id):
+	''' retrieve the binding info from the tagged id of a grounded function
+		example:
+			from map_int_bool, extract binding [('a:)int, ('b:)bool]
+	'''
+	return composite_id.split(GROUND_SEP)[1:]
+
+def restore_id(composite_id):
 	'''reverse the process of giving a generic function with specific id in the petri net'''
-	return composite.split('_')[0]
+	return composite_id.split(GROUND_SEP)[0]
+
