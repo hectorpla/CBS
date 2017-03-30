@@ -7,6 +7,7 @@ import re
 first_elem_of_tuple = lambda x: x[0]
 second_elem_of_tuple = lambda x: x[1]
 
+# parsing utility
 def parse_multiple_dirs(dirs):
 	l = []
 	for dir in dirs:
@@ -36,12 +37,12 @@ def parse_json(file):
 		f.close()
 	return result
 
+# utilities for z3
 def var_generator():
 	cur = 0
 	while True:
 		yield 'v' + str(cur)
 		cur += 1
-
 def is_variable(name):
 	return name.startswith('v') and all(map(str.isdigit, name[1:]))
 
@@ -68,6 +69,7 @@ def print_sketch(sketch):
 	for line in sketch:
 		print(line)
 
+# utility for generic grounding
 RE_GENERICS = "'[a-z][0-9a-z]*"
 
 def decompose_types(tobreak):
@@ -118,10 +120,10 @@ def ground_terms(composite_id):
 	''' retrieve the binding info from the tagged id of a grounded function
 		example:
 			from map_int_bool, extract binding [('a:)int, ('b:)bool]
+		Note: should merge with function restore_id
 	'''
 	return composite_id.split(GROUND_SEP)[1:]
 
 def restore_id(composite_id):
 	'''reverse the process of giving a generic function with specific id in the petri net'''
 	return composite_id.split(GROUND_SEP)[0]
-

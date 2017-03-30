@@ -18,14 +18,54 @@ class parseError(Exception):
 	def __str__(self):
 		return repr(msg)
 
+class IOWeightObject(object):
+	def __init__(self):
+		raise NotImplementedError('abstract class IOWeightObject')
+		self.paras = None # supposed to be [(arg0, type0) ...]
+		self.rtypes = None # [type0, type1]
+		self._in, self._out = None, None # both {type0:weight0, type1:weight1 ...}
+	def _in_weights(self):
+		return self._count_weights(map(second_elem_of_tuple, self.paras))
+	def _out_weight(self):
+		return self._count_weights(self.rtypes)
+	def _count_weights(self, typelist):
+		w = {}
+		for t in typelist:
+			w[t] = w.get(t, 0) + 1
+		return w
+	def paras_list(self):
+		return list(map(first_elem_of_tuple, self.paras))
+
+class Branch(IOWeightObject):
+	def __init__(self, sigtr, brchargs, brchtype='list'):
+		''' class for a branch of pattern matching
+			brch arg example: 
+			in |hd::tl -> ..., hd and tl are branch argument for this branch
+		'''
+		if brchtype != 'list':
+			raise NotImplementedError('data structure other than list pattern matching not considered') 
+		assert isinstance(sigtr, Signature) # a branch is derived from a function signature
+		self.paras = brchargs
+		self._in = self._in_weights
+		self._out = sigtr._out # bad pattern? member access between siblings
+	def brch_sketch(self):
+		if self.brchtype == 'list':
+			return '|' + '::'.join(self.paras_list()) + '->'
+		raise NotImplementedError('other cases')
+
 class SynBranch(object):
 	'''basically do the same work as synthesis'''
-	def __init__(self, systhesis):
+	def __init__(self, systhesis, brches, index):
+		assert len(brches) > 1
 		self.synt = systhesis
+		self.brches = brches # overall brachings
+		self.index # the index of the current synbranch in the overall branching list
 	def enum_brch_sketch(self):
 		self.synt.setup()
 		for sketch in self.synt.enum_concrete_sketch():
-			yield sketch[1:] # ignore the signature
+			yield sketch[1:] # ignore the signature	
+	def _test(self):
+		pass
 
 class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
@@ -44,15 +84,15 @@ class Synthesis(object):
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
 	def _branch_out(self, startmrk, brchname=None):
-		'''create a new branch that does the subtask of synthesis(a if-else branch of pattern matching) '''
-		subsyn = copy.copy(self)
+		'''create a new branch that does the subtask of synthesis
+		(a if-else branch of pattern matching) '''
+		subsyn = copy.copy(self) # is copy good enough?
 		assert self.stategraph is not None
 		subsyn.stategraph = StateGraph(self.net, start=startmrk, end=self.stategraph)
-		return subsyn
+		return SynBranch(subsyn)
 
 	def draw_net(self):
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
-
 	def draw_state_graph(self):
 		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
 
@@ -62,10 +102,8 @@ class Synthesis(object):
 		self.stategraph = StateGraph(self.net, 
 			start=start_marking, end=end_marking, aug_graph='draws/clone_added.eps')
 		self.stategraph.build()
-
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
-
 	def start(self):
 		'''interface for outside'''
 		for sketch in self.enum_concrete_sketch():
@@ -83,7 +121,6 @@ class Synthesis(object):
 		test_command = ['ocaml', outpath]
 		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
 		return b'true' == subproc.communicate()[0]
-
 	def _write_out(self, sketch, outpath):
 		'''write the completed sketch into a file'''
 		with open(outpath, 'w') as targetfile:
@@ -96,7 +133,6 @@ class Synthesis(object):
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
-
 	def id_sketches(self):
 		'''return one of parameters'''
 		tgt = self.targetfunc.rtypes[0] # for only one return value
@@ -106,10 +142,19 @@ class Synthesis(object):
 			lines = formatter.format_out({0:para})
 			print_sketch(lines)
 			yield lines
-
 	def enum_concrete_sketch(self):
 		'''enumerate completed sketch'''
 		yield from self.id_sketches() # identity functions
+		print('-----------end of id sketches-------------')
+		list_args = self.targetfunc.paras_of_list_type()
+		for arg, t in list_args:
+			pass
+			# branch out
+			# assume t as a string has the formate: ? list
+
+			patterns = []
+			patterns.append([])
+			patterns.append([('hd','elem type'),('tl','list type')])
 		for sk, skformatter in self.inc_len_sketch_enum():
 			print_sketch(skformatter.format_out())
 			for concrtsk in sk.enum_subst():
@@ -147,9 +192,9 @@ class Synthesis(object):
 			subst = dict(zip(ext_syms_list(self.comps[func_id].io_types()), ground_terms(f)))
 			vartype = [instantiate(t, subst) for t in self.comps[func_id].rtypes]
 			holetype = [instantiate(t, subst) for t in self.comps[func_id].param_types()]
-			print(subst)
-			print(vartype)
-			print(holetype)
+			# print(subst)
+			# print(vartype)
+			# print(holetype)
 			# ocaml specific: unit type
 			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartype]
 			holes = [next(counter) for i in range(self.comps[func_id].input_len())]
@@ -165,26 +210,18 @@ class Synthesis(object):
 		"""show statistics after synthesis"""
 		raise NotImplementedError('not yet implemented')
 
-class Signature(object):
+class Signature(IOWeightObject):
 	"""A base class for Component and Target"""
 	def __init__(self, sigtr_dict):
 		self.name = sigtr_dict['name']
 		assert len(sigtr_dict['paramNames']) == len(sigtr_dict['paramTypes'])
 		# (key, value) -> (arg name, arg type)
-		self.paras = [(arg, atype) for (arg, atype) in zip(sigtr_dict['paramNames'], sigtr_dict['paramTypes'])] 
+		self.paras = list(zip(sigtr_dict['paramNames'], sigtr_dict['paramTypes']))
 		if isinstance(sigtr_dict['tgtTypes'], list):
 			self.rtypes = sigtr_dict['tgtTypes'] # return types
 		else:
 			self.rtypes = [sigtr_dict['tgtTypes']]
-		self._in, self._out = self._count_weights(self.paras, self.rtypes)
-	def _count_weights(self, paras, rtypes):
-		_input = {}
-		_output = {}
-		for pa, t in self.paras:
-			_input[t] = _input.get(t, 0) + 1
-		for rt in self.rtypes:
-			_output[rt] = _output.get(rt, 0) + 1
-		return _input, _output
+		self._in, self._out = self._in_weights(), self._out_weight()
 	def input_len(self):
 		return len(self.paras)
 	def output_len(self):
@@ -206,9 +243,12 @@ class TargetFunc(Signature):
 		for i, weight in self._out.items():
 			ws[i] = MultiSet(['t'] * weight)
 		return Marking(ws)
+	def paras_of_list_type(self):
+		'''very similar to params_of_type'''
+		return [para for para, _ in self.paras if 'list' in para]
 	def sigtr_sketch(self):
 		"""write out the function definition"""
-		return 'let ' + self.name + ' ' + sep_join(self.paras) + ' ='
+		return 'let ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
 
 class Component(Signature):
 	"""A function in the specified library"""
@@ -224,11 +264,10 @@ class Component(Signature):
 		'''return the function's parameter types '''
 		return list(map(lambda x: x[1], self.paras))
 	def io_types(self):
-		'''return the concated list of in and out types, in first'''
+		'''return the concated list of in and out (distinct)types, in types first'''
 		return list(itertools.chain(self._in.keys(), self._out.keys())) 
 	def _add_funcs(self):
 		inlen = len(self._in)
-		# in_and_out = list(itertools.chain(self._in.keys(), self._out.keys())) 
 		for instance, subst in instantiate_generics(self.io_types(), PRIMITIVE_TYPES):
 			# print(instance)
 			i = list(zip(instance[:inlen], self._in.values())) # {"'a":2} -> [(ground("'a"), 2)]
