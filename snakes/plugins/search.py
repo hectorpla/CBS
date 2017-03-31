@@ -103,7 +103,7 @@ def extend(module):
 
 	class StateGraph(module.StateGraph):
 		def __init__(self, net, end=None, start=None, aug_graph=None):
-			assert start is not None
+			assert isinstance(start, Marking)
 			assert end is not None
 			old = net.get_marking()
 			net.set_marking(start) # < tricky construct for stategraph

@@ -36,36 +36,81 @@ class IOWeightObject(object):
 	def paras_list(self):
 		return list(map(first_elem_of_tuple, self.paras))
 
+counter = itertools.count(1) # temperialy use it
 class Branch(IOWeightObject):
-	def __init__(self, sigtr, brchargs, brchtype='list'):
+	def __init__(self, sigtr, brchbef, brchargs, brchtype='list'):
 		''' class for a branch of pattern matching
 			brch arg example: 
 			in |hd::tl -> ..., hd and tl are branch argument for this branch
+			NOTE: consider making this class the subclass of targetFunc!!!
 		'''
+		assert isinstance(sigtr, Signature) # a branch is derived from a function signature
+		assert isinstance(brchbef, tuple) and len(brchbef) == 2 # example (arg0, int list)
 		if brchtype != 'list':
 			raise NotImplementedError('data structure other than list pattern matching not considered') 
-		assert isinstance(sigtr, Signature) # a branch is derived from a function signature
+		
 		self.paras = brchargs
-		self._in = self._in_weights
+		self.brchtype = brchtype
+		self.brch_id = next(counter)
+		self._in = self._in_weights()
 		self._out = sigtr._out # bad pattern? member access between siblings
+		carg, ctype = brchbef
+		self.matchline = 'match ' + carg + ' with'
+		self.start_marking = self._branch_marking(sigtr, ctype)
+	def _branch_marking(self, sigtr, ctype):
+		''' bad. copy & paste, should change '''
+		ws = {}
+		for i, weight in self._in.items():
+			ws[i] = MultiSet(['t'] * weight)
+		return Marking(ws) + (sigtr.get_start_marking() - Marking({ctype:MultiSet(['t'])}))
 	def brch_sketch(self):
 		if self.brchtype == 'list':
+			if len(self.paras) == 0:
+				return '| [] ->'
 			return '|' + '::'.join(self.paras_list()) + '->'
 		raise NotImplementedError('other cases')
+	def __str__(self):
+		'''for debug'''
+		return self.brch_sketch()
 
 class SynBranch(object):
 	'''basically do the same work as synthesis'''
-	def __init__(self, systhesis, brches, index):
-		assert len(brches) > 1
-		self.synt = systhesis
-		self.brches = brches # overall brachings
-		self.index # the index of the current synbranch in the overall branching list
-	def enum_brch_sketch(self):
+	def __init__(self, synthesis, brch):
+		assert synthesis.stategraph is not None
+		print('before copy')
+		self.synt = copy.copy(synthesis) # is copy good enough?
+		self.brch = brch
+		startmrk = self.brch.start_marking
+		endmrk = self.synt.stategraph.end_marking
+		print(startmrk)
+		print(endmrk)
+		self.synt.stategraph = StateGraph(self.synt.net, start=startmrk, end=endmrk)
+	def _sketch_other_case(self):
+		return '| _ -> raise Not_found'
+	def _enum_brch_sketch(self):
 		self.synt.setup()
-		for sketch in self.synt.enum_concrete_sketch():
-			yield sketch[1:] # ignore the signature	
-	def _test(self):
-		pass
+		for sketch in self.synt.enum_concrete_sketch(brchout=False):
+			brchsk = [self.brch.brch_sketch()] + sketch[1:]
+			yield  brchsk # ignore the signature
+	def _enum_partial_sketch(self):
+		for brchsk in self._enum_brch_sketch():
+			runablesketch = [self.synt.targetfunc.sigtr_sketch()]
+			runablesketch.extend([self.brch.matchline])
+			runablesketch.extend(brchsk)
+			runablesketch.extend([self._sketch_other_case()])
+			yield runablesketch, brchsk
+	def _test_partial(self, partial, outname):
+		print('partial test run')
+		return self.synt._test(partial, outname)
+	def accepting_partial(self):
+		'''if there is one return it, otherwise return None'''
+		print('finding accepting partial: ' + str(self.brch))
+		outfile = self.synt.targetfunc.name + '_brch_' + str(self.brch.brch_id)
+		for torun, brchsk in self._enum_partial_sketch():
+			if self._test_partial(torun, outfile):
+				# print('partial runable:')
+				# print(torun)
+				return brchsk
 
 class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
@@ -79,17 +124,14 @@ class Synthesis(object):
 		if not isinstance(dirs, list):
 			dirs = [dirs]
 		self.dirs = dirs
-		self.comps = dict(((comp['name'], Component(comp, self.net)) for comp in parse_multiple_dirs(dirs)))
+		self.comps = None
 		self.stategraph = None
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
-	def _branch_out(self, startmrk, brchname=None):
+	def _branch_out(self, brch):
 		'''create a new branch that does the subtask of synthesis
-		(a if-else branch of pattern matching) '''
-		subsyn = copy.copy(self) # is copy good enough?
-		assert self.stategraph is not None
-		subsyn.stategraph = StateGraph(self.net, start=startmrk, end=self.stategraph)
-		return SynBranch(subsyn)
+		(a branch of pattern matching) '''
+		return SynBranch(self, brch)
 
 	def draw_net(self):
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
@@ -97,6 +139,9 @@ class Synthesis(object):
 		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
 
 	def setup(self):
+		if self.comps is None:
+			self.comps = dict(((comp['name'], Component(comp, self.net)) 
+					for comp in parse_multiple_dirs(self.dirs)))
 		start_marking = self.targetfunc.get_start_marking()
 		end_marking = self.targetfunc.get_end_marking()
 		self.stategraph = StateGraph(self.net, 
@@ -113,7 +158,6 @@ class Synthesis(object):
 			print('FAILED')
 			if PAUSE:
 				input("PRESS ENTER TO CONTINUE.\n")
-
 	def _test(self, testsketch, outname):
 		'''compile/test the code against user-provided tests'''
 		outpath = 'out/' + outname + '.ml'
@@ -142,19 +186,30 @@ class Synthesis(object):
 			lines = formatter.format_out({0:para})
 			print_sketch(lines)
 			yield lines
-	def enum_concrete_sketch(self):
+	def enum_concrete_sketch(self, brchout=True):
 		'''enumerate completed sketch'''
 		yield from self.id_sketches() # identity functions
 		print('-----------end of id sketches-------------')
-		list_args = self.targetfunc.paras_of_list_type()
-		for arg, t in list_args:
-			pass
-			# branch out
-			# assume t as a string has the formate: ? list
-
-			patterns = []
-			patterns.append([])
-			patterns.append([('hd','elem type'),('tl','list type')])
+		if brchout:
+			list_args = self.targetfunc.paras_of_list_type()
+			for arg, t in list_args:
+				# assume t as a string has the formate: ? list
+				elemtype, listtype = t.split(' ')
+				branchings = []
+				branchings.append(Branch(self.targetfunc, (arg, t), []))
+				branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', listtype)]))
+				combined = [self.targetfunc.sigtr_sketch()] # not good
+				for b in branchings:
+					subsyn = self._branch_out(b)
+					partial_sketch = subsyn.accepting_partial()
+					if partial_sketch is None:
+						combined = None
+						break
+					combined.extend(partial_sketch)
+				if combined is None:
+					break
+				yield combined
+			print('-----------end of branched sketches-------------')
 		for sk, skformatter in self.inc_len_sketch_enum():
 			print_sketch(skformatter.format_out())
 			for concrtsk in sk.enum_subst():
@@ -162,7 +217,7 @@ class Synthesis(object):
 				concretelines = skformatter.format_out(concrtsk)
 				print_sketch(concretelines)
 				yield concretelines
-			print('-----------one seq ended-------------')
+			if brchout: print('-----------one seq ended-------------')
 
 	def inc_len_sketch_enum(self):
 		'''enumerate non-complete sketch'''
@@ -232,7 +287,6 @@ class Signature(IOWeightObject):
 class TargetFunc(Signature):
 	def __init__(self, info):
 		super(TargetFunc, self).__init__(info)
-
 	def get_start_marking(self):
 		ws = {}
 		for i, weight in self._in.items():
@@ -245,7 +299,7 @@ class TargetFunc(Signature):
 		return Marking(ws)
 	def paras_of_list_type(self):
 		'''very similar to params_of_type'''
-		return [para for para, _ in self.paras if 'list' in para]
+		return [para for para in self.paras if 'list' in para[1]]
 	def sigtr_sketch(self):
 		"""write out the function definition"""
 		return 'let ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
@@ -462,4 +516,3 @@ class Sketch(object):
 				yield self._process_model()
 			else:
 				break
-
