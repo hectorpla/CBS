@@ -128,6 +128,8 @@ class Synthesis(object):
 		self.stategraph = None
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
+		self._construct_components()
+		# print(self.comps)
 	def _branch_out(self, brch):
 		'''create a new branch that does the subtask of synthesis
 		(a branch of pattern matching) '''
@@ -137,11 +139,11 @@ class Synthesis(object):
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
 	def draw_state_graph(self):
 		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
-
-	def setup(self):
+	def _construct_components(self):
 		if self.comps is None:
-			self.comps = dict(((comp['name'], Component(comp, self.net)) 
-					for comp in parse_multiple_dirs(self.dirs)))
+			self.comps = dict((func_id(comp['module'], comp['name']), Component(comp, self.net))
+					for comp in parse_multiple_dirs(self.dirs))
+	def setup(self):
 		start_marking = self.targetfunc.get_start_marking()
 		end_marking = self.targetfunc.get_end_marking()
 		self.stategraph = StateGraph(self.net, 
@@ -168,11 +170,10 @@ class Synthesis(object):
 	def _write_out(self, sketch, outpath):
 		'''write the completed sketch into a file'''
 		with open(outpath, 'w') as targetfile:
-			for dir in self.dirs:
-				module_name = last_component(dir)
-				module_name = module_name[0].upper() + module_name[1:]
-				# print(module_name)
-				targetfile.write('open ' + module_name + '\n')
+			# for dir in self.dirs:
+			# 	module_name = last_component(dir)
+			# 	module_name = module_name[0].upper() + module_name[1:]
+			# 	targetfile.write('open ' + module_name + '\n')
 			for line in sketch:
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
@@ -309,11 +310,12 @@ class Component(Signature):
 	def __init__(self, signature, petri):
 		super(Component, self).__init__(signature)
 		self.net = petri
+		self.name = func_id(signature['module'], signature['name'])
 		self._add_funcs()
-
+	def __str__(self):
+		return self.name
 	def id(self):
 		return self.name
-
 	def param_types(self):
 		'''return the function's parameter types '''
 		return list(map(lambda x: x[1], self.paras))
@@ -511,7 +513,7 @@ class Sketch(object):
 		while True:
 			start = time.clock()
 			if z3.sat == self.s.check():
-				print(time.clock() - start)
+				print('z3 solve time:', time.clock() - start)
 				print('  -----',end='')
 				yield self._process_model()
 			else:

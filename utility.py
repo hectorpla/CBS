@@ -7,6 +7,13 @@ import re
 first_elem_of_tuple = lambda x: x[0]
 second_elem_of_tuple = lambda x: x[1]
 
+def cap_initial(s):
+	return str.upper(s[0]) + s[1:]
+def func_id(module, name):
+	if len(module) == 0:
+		return name
+	return cap_initial(module) + '.' + name
+
 # parsing utility
 def parse_multiple_dirs(dirs):
 	l = []
