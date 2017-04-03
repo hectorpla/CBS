@@ -129,6 +129,7 @@ def extend(module):
 			if aug_graph != None: # gv plugin should be loaded before this module
 				self.net.draw(aug_graph)
 			del W
+			print('----state graph created----')
 		def _add_clones(self):
 			for place in self.net.place(): # clone transition for each type
 				t = place.name

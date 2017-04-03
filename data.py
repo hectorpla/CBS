@@ -1,4 +1,5 @@
 from utility import *
+from sformat import *
 import snakes.plugins
 snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
 from snk import *
@@ -63,7 +64,7 @@ class Branch(IOWeightObject):
 		for i, weight in self._in.items():
 			ws[i] = MultiSet(['t'] * weight)
 		return Marking(ws) + (sigtr.get_start_marking() - Marking({ctype:MultiSet(['t'])}))
-	def brch_sketch(self):
+	def sketch(self):
 		if self.brchtype == 'list':
 			if len(self.paras) == 0:
 				return '| [] ->'
@@ -71,7 +72,7 @@ class Branch(IOWeightObject):
 		raise NotImplementedError('other cases')
 	def __str__(self):
 		'''for debug'''
-		return self.brch_sketch()
+		return self.sketch()
 
 class SynBranch(object):
 	'''basically do the same work as synthesis'''
@@ -89,12 +90,12 @@ class SynBranch(object):
 		return '| _ -> raise Not_found'
 	def _enum_brch_sketch(self):
 		self.synt.setup()
-		for sketch in self.synt.enum_concrete_sketch(brchout=False):
-			brchsk = [self.brch.brch_sketch()] + sketch[1:]
+		for sk in self.synt.enum_concrete_sketch(brchout=False):
+			brchsk = [self.brch.sketch()] + sk[1:]
 			yield  brchsk # ignore the signature
 	def _enum_partial_sketch(self):
 		for brchsk in self._enum_brch_sketch():
-			runablesketch = [self.synt.targetfunc.sigtr_sketch()]
+			runablesketch = [self.synt.targetfunc.sketch()]
 			runablesketch.extend([self.brch.matchline])
 			runablesketch.extend(brchsk)
 			runablesketch.extend([self._sketch_other_case()])
@@ -114,21 +115,21 @@ class SynBranch(object):
 
 class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
-	def __init__(self, sigtr_file):
+	def __init__(self, parent=None, sigtr_file=None):
 		sigtr = parse_json(sigtr_file)
 		self.targetfunc = TargetFunc(sigtr)
 		if self.targetfunc is None:
 			raise parseError('format for the target function is incorrect')
 		self.net = PetriNet('NET for ' + sigtr['name'])
 		dirs = sigtr['libdirs']
-		if not isinstance(dirs, list):
-			dirs = [dirs]
+		if not isinstance(dirs, list): dirs = [dirs]
 		self.dirs = dirs
 		self.comps = None
 		self.stategraph = None
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
 		self._construct_components()
+		self.enum_counter = itertools.count(0)
 		# print(self.comps)
 	def _branch_out(self, brch):
 		'''create a new branch that does the subtask of synthesis
@@ -154,8 +155,9 @@ class Synthesis(object):
 	def start(self):
 		'''interface for outside'''
 		for sketch in self.enum_concrete_sketch():
+			next(self.enum_counter)
 			if self._test(sketch, self.targetfunc.name):
-				print('SUCCEEDED!!!')
+				print('SUCCEEDED!!! ' + str(next(self.enum_counter)) + ' sketches enumerated')
 				break
 			print('FAILED')
 			if PAUSE:
@@ -170,10 +172,6 @@ class Synthesis(object):
 	def _write_out(self, sketch, outpath):
 		'''write the completed sketch into a file'''
 		with open(outpath, 'w') as targetfile:
-			# for dir in self.dirs:
-			# 	module_name = last_component(dir)
-			# 	module_name = module_name[0].upper() + module_name[1:]
-			# 	targetfile.write('open ' + module_name + '\n')
 			for line in sketch:
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
@@ -199,7 +197,7 @@ class Synthesis(object):
 				branchings = []
 				branchings.append(Branch(self.targetfunc, (arg, t), []))
 				branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', listtype)]))
-				combined = [self.targetfunc.sigtr_sketch()] # not good
+				combined = [self.targetfunc.sketch()] # not good
 				for b in branchings:
 					subsyn = self._branch_out(b)
 					partial_sketch = subsyn.accepting_partial()
@@ -226,21 +224,12 @@ class Synthesis(object):
 			print(seq)
 			yield self._gen_sketch(seq)
 
-	def non_rep_sketch_enum(self):
-		"""
-		for seq in s.enumerate_sketch():
-		print(seq)
-		for line in gen_sketch(comps, seq):
-			print(line)
-		print()
-		"""
-		raise NotImplementedError('not yet implemented')
-
 	def _gen_sketch(self, sequence):
 		'''create Sketch object for completion and SketchFormatter for output'''
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		lines = []
+		lines.append(self.targetfunc)
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
@@ -248,9 +237,6 @@ class Synthesis(object):
 			subst = dict(zip(ext_syms_list(self.comps[func_id].io_types()), ground_terms(f)))
 			vartype = [instantiate(t, subst) for t in self.comps[func_id].rtypes]
 			holetype = [instantiate(t, subst) for t in self.comps[func_id].param_types()]
-			# print(subst)
-			# print(vartype)
-			# print(holetype)
 			# ocaml specific: unit type
 			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartype]
 			holes = [next(counter) for i in range(self.comps[func_id].input_len())]
@@ -260,7 +246,7 @@ class Synthesis(object):
 		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
 		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
 		lines.append(retline)
-		return Sketch(self.targetfunc, lines), SketchFormatter(self.targetfunc, lines)
+		return Sketch(self.targetfunc, lines), SketchFormatter(lines)
 
 	def stat(self):
 		"""show statistics after synthesis"""
@@ -301,7 +287,7 @@ class TargetFunc(Signature):
 	def paras_of_list_type(self):
 		'''very similar to params_of_type'''
 		return [para for para in self.paras if 'list' in para[1]]
-	def sigtr_sketch(self):
+	def sketch(self, dummy=None):
 		"""write out the function definition"""
 		return 'let ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
 
@@ -311,6 +297,8 @@ class Component(Signature):
 		super(Component, self).__init__(signature)
 		self.net = petri
 		self.name = func_id(signature['module'], signature['name'])
+		print()
+		print('in:', self._in, 'out:', self._out)
 		self._add_funcs()
 	def __str__(self):
 		return self.name
@@ -325,24 +313,38 @@ class Component(Signature):
 	def _add_funcs(self):
 		inlen = len(self._in)
 		for instance, subst in instantiate_generics(self.io_types(), PRIMITIVE_TYPES):
-			# print(instance)
-			i = list(zip(instance[:inlen], self._in.values())) # {"'a":2} -> [(ground("'a"), 2)]
-			o = list(zip(instance[inlen:], self._out.values()))
+			print(instance)
+			# unpack the input and output
+			i, o = {}, {}
+			for t, w in zip(instance[:inlen], self._in.values()): # {"'a":2} -> [(ground("'a"), 2)]
+				i[t] = i.get(t, 0) + w
+			for t, w in zip(instance[inlen:], self._out.values()):
+				o[t] = o.get(t, 0) + w
 			self._add_func(i, o, func_id_in_petri(self.id(), subst))
 	def _add_func(self, _in, _out, funcname):
 		"""add transition to the Petri Net"""
-		for place, _ in _in:
-			if not self.net.has_place(place):
-				self.net.add_place(Place(place))
-		for place, _ in _out:
-			if not self.net.has_place(place):
-				self.net.add_place(Place(place))
+
+		# for place, _ in _in:
+		# 	if not self.net.has_place(place):
+		# 		self.net.add_place(Place(place))
+		# for place, _ in _out:
+		# 	if not self.net.has_place(place):
+		# 		self.net.add_place(Place(place))
 		# issue: functions with same name from different modules
+		if isinstance(_in, dict):
+			_in = _in.items()
+		if isinstance(_out, dict):
+			_out = _out.items()
 		assert not self.net.has_transition(funcname)
 		self.net.add_transition(Transition(funcname))
 		for place, weight in _in:
+			print('     place:', place, ', funcname:', funcname, ', weight:', weight)
+			if not self.net.has_place(place):
+				self.net.add_place(Place(place))
 			self.net.add_input(place, funcname, MultiArc([Variable('var')] * weight))
 		for place, weight in _out:
+			if not self.net.has_place(place):
+				self.net.add_place(Place(place))
 			self.net.add_output(place, funcname, MultiArc([Variable('var')] * weight))
 
 	def sketch(self, varlist, holelist, substitution=None):
@@ -377,28 +379,12 @@ class SketchLine(object):
 	def variables(self):
 		return (var for var in self._vars)
 	def sketch(self, subst=None):
-		'''take care of the return line'''
+		'''take care of the return line, if it is line like "let a = foo b", pass down to component'''
 		if self._comp is None:
 			if subst is None:
 				return ', '.join(map(lambda x: '#' + str(first_elem_of_tuple(x)), self._holes))
 			return ','.join([subst[hole] for hole, _ in self._holes])
 		return self._comp.sketch(self._vars, list(map(first_elem_of_tuple, self._holes)), subst)
-
-class SketchFormatter(object):
-	'''a class that format up the systhesised codes'''
-	def __init__(self, sigtr, lines):
-		assert isinstance(sigtr, TargetFunc)
-		assert isinstance(lines[0], SketchLine)
-		self._signature = sigtr
-		self._lines = lines # list of SketchLine
-	def format_out(self, subst=None):
-		sk = []
-		sk.append(self._signature.sigtr_sketch())
-		for skline in self._lines[:-1]:
-			toprint = skline.sketch(subst)
-			sk.append('\t' + toprint + ' in')
-		sk.append('\t' + self._lines[-1].sketch(subst))
-		return sk
 
 class Sketch(object):
 	"""data structure for a code sketch in purpose to complete in SAT solver"""
@@ -413,7 +399,8 @@ class Sketch(object):
 	def init_frame(self, signature, sklines):
 		self._add_signature(signature)
 		for skline in sklines:
-			self._add_line(skline)
+			if isinstance(skline, SketchLine):
+				self._add_line(skline)
 	def _vars(self):
 		for typing in self.type_vars:
 			for var in self.type_vars[typing]:
@@ -472,7 +459,9 @@ class Sketch(object):
 				print('HOLE CONSTRAINTS LIST: ' + str(vcandlist))
 			self.s.add(z3.AtMost(vcandlist + [1])) # all add up to 0 or 1
 			self.s.add(z3.Or(vcandlist))
+		self._set_var_constraints()
 
+	def _set_var_constraints(self):
 		for var in self.var_holes:
 			hcandlist = list(self.hypos[hole][var] for hole in self.var_holes[var])
 			if DEBUG:
