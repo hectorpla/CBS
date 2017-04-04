@@ -134,3 +134,9 @@ def ground_terms(composite_id):
 def restore_id(composite_id):
 	'''reverse the process of giving a generic function with specific id in the petri net'''
 	return composite_id.split(GROUND_SEP)[0]
+
+def has_func_para(types):
+	for t in types:
+		if '->' in t:
+			return True
+	return False

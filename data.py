@@ -1,5 +1,4 @@
 from utility import *
-from sformat import *
 import snakes.plugins
 snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
 from snk import *
@@ -74,184 +73,6 @@ class Branch(IOWeightObject):
 		'''for debug'''
 		return self.sketch()
 
-class SynBranch(object):
-	'''basically do the same work as synthesis'''
-	def __init__(self, synthesis, brch):
-		assert synthesis.stategraph is not None
-		print('before copy')
-		self.synt = copy.copy(synthesis) # is copy good enough?
-		self.brch = brch
-		startmrk = self.brch.start_marking
-		endmrk = self.synt.stategraph.end_marking
-		print(startmrk)
-		print(endmrk)
-		self.synt.stategraph = StateGraph(self.synt.net, start=startmrk, end=endmrk)
-	def _sketch_other_case(self):
-		return '| _ -> raise Not_found'
-	def _enum_brch_sketch(self):
-		self.synt.setup()
-		for sk in self.synt.enum_concrete_sketch(brchout=False):
-			brchsk = [self.brch.sketch()] + sk[1:]
-			yield  brchsk # ignore the signature
-	def _enum_partial_sketch(self):
-		for brchsk in self._enum_brch_sketch():
-			runablesketch = [self.synt.targetfunc.sketch()]
-			runablesketch.extend([self.brch.matchline])
-			runablesketch.extend(brchsk)
-			runablesketch.extend([self._sketch_other_case()])
-			yield runablesketch, brchsk
-	def _test_partial(self, partial, outname):
-		print('partial test run')
-		return self.synt._test(partial, outname)
-	def accepting_partial(self):
-		'''if there is one return it, otherwise return None'''
-		print('finding accepting partial: ' + str(self.brch))
-		outfile = self.synt.targetfunc.name + '_brch_' + str(self.brch.brch_id)
-		for torun, brchsk in self._enum_partial_sketch():
-			if self._test_partial(torun, outfile):
-				# print('partial runable:')
-				# print(torun)
-				return brchsk
-
-class Synthesis(object):
-	"""An instance of this class conducts a systhesis task for a Target Signature"""
-	def __init__(self, parent=None, sigtr_file=None):
-		sigtr = parse_json(sigtr_file)
-		self.targetfunc = TargetFunc(sigtr)
-		if self.targetfunc is None:
-			raise parseError('format for the target function is incorrect')
-		self.net = PetriNet('NET for ' + sigtr['name'])
-		dirs = sigtr['libdirs']
-		if not isinstance(dirs, list): dirs = [dirs]
-		self.dirs = dirs
-		self.comps = None
-		self.stategraph = None
-		self._synlen = 5
-		self.testpath = sigtr['testpath']
-		self._construct_components()
-		self.enum_counter = itertools.count(0)
-		# print(self.comps)
-	def _branch_out(self, brch):
-		'''create a new branch that does the subtask of synthesis
-		(a branch of pattern matching) '''
-		return SynBranch(self, brch)
-
-	def draw_net(self):
-		self.net.draw('draws/' + self.targetfunc.name + '.eps')
-	def draw_state_graph(self):
-		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
-	def _construct_components(self):
-		if self.comps is None:
-			self.comps = dict((func_id(comp['module'], comp['name']), Component(comp, self.net))
-					for comp in parse_multiple_dirs(self.dirs))
-	def setup(self):
-		start_marking = self.targetfunc.get_start_marking()
-		end_marking = self.targetfunc.get_end_marking()
-		self.stategraph = StateGraph(self.net, 
-			start=start_marking, end=end_marking, aug_graph='draws/clone_added.eps')
-		self.stategraph.build()
-	def set_syn_len(self, max_len):
-		self._synlen = max_len
-	def start(self):
-		'''interface for outside'''
-		for sketch in self.enum_concrete_sketch():
-			next(self.enum_counter)
-			if self._test(sketch, self.targetfunc.name):
-				print('SUCCEEDED!!! ' + str(next(self.enum_counter)) + ' sketches enumerated')
-				break
-			print('FAILED')
-			if PAUSE:
-				input("PRESS ENTER TO CONTINUE.\n")
-	def _test(self, testsketch, outname):
-		'''compile/test the code against user-provided tests'''
-		outpath = 'out/' + outname + '.ml'
-		self._write_out(testsketch, outpath)
-		test_command = ['ocaml', outpath]
-		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
-		return b'true' == subproc.communicate()[0]
-	def _write_out(self, sketch, outpath):
-		'''write the completed sketch into a file'''
-		with open(outpath, 'w') as targetfile:
-			for line in sketch:
-				targetfile.write(line + '\n')
-			with open(self.testpath) as test:
-				targetfile.write(test.read())
-	def id_sketches(self):
-		'''return one of parameters'''
-		tgt = self.targetfunc.rtypes[0] # for only one return value
-		for para in self.targetfunc.params_of_type(tgt):
-			sklines = [SketchLine(None, [], [(0, tgt)])] # single hole
-			formatter = SketchFormatter(self.targetfunc, sklines)
-			lines = formatter.format_out({0:para})
-			print_sketch(lines)
-			yield lines
-	def enum_concrete_sketch(self, brchout=True):
-		'''enumerate completed sketch'''
-		yield from self.id_sketches() # identity functions
-		print('-----------end of id sketches-------------')
-		if brchout:
-			list_args = self.targetfunc.paras_of_list_type()
-			for arg, t in list_args:
-				# assume t as a string has the formate: ? list
-				elemtype, listtype = t.split(' ')
-				branchings = []
-				branchings.append(Branch(self.targetfunc, (arg, t), []))
-				branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', listtype)]))
-				combined = [self.targetfunc.sketch()] # not good
-				for b in branchings:
-					subsyn = self._branch_out(b)
-					partial_sketch = subsyn.accepting_partial()
-					if partial_sketch is None:
-						combined = None
-						break
-					combined.extend(partial_sketch)
-				if combined is None:
-					break
-				yield combined
-			print('-----------end of branched sketches-------------')
-		for sk, skformatter in self.inc_len_sketch_enum():
-			print_sketch(skformatter.format_out())
-			for concrtsk in sk.enum_subst():
-				print('--->')
-				concretelines = skformatter.format_out(concrtsk)
-				print_sketch(concretelines)
-				yield concretelines
-			if brchout: print('-----------one seq ended-------------')
-
-	def inc_len_sketch_enum(self):
-		'''enumerate non-complete sketch'''
-		for seq in self.stategraph.enumerate_sketch_l(self._synlen):
-			print(seq)
-			yield self._gen_sketch(seq)
-
-	def _gen_sketch(self, sequence):
-		'''create Sketch object for completion and SketchFormatter for output'''
-		counter = itertools.count(0)
-		var_gen = var_generator()
-		lines = []
-		lines.append(self.targetfunc)
-		for f in sequence:
-			if f.startswith('clone_'): # watchout: mind the name confilction 
-				continue
-			func_id = restore_id(f) # recover the name of the function from ground tag
-			subst = dict(zip(ext_syms_list(self.comps[func_id].io_types()), ground_terms(f)))
-			vartype = [instantiate(t, subst) for t in self.comps[func_id].rtypes]
-			holetype = [instantiate(t, subst) for t in self.comps[func_id].param_types()]
-			# ocaml specific: unit type
-			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartype]
-			holes = [next(counter) for i in range(self.comps[func_id].input_len())]
-			skline = SketchLine(self.comps[func_id], variables, list(zip(holes, holetype)))
-			lines.append(skline)
-		# set up return line
-		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
-		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
-		lines.append(retline)
-		return Sketch(self.targetfunc, lines), SketchFormatter(lines)
-
-	def stat(self):
-		"""show statistics after synthesis"""
-		raise NotImplementedError('not yet implemented')
-
 class Signature(IOWeightObject):
 	"""A base class for Component and Target"""
 	def __init__(self, sigtr_dict):
@@ -291,14 +112,15 @@ class TargetFunc(Signature):
 		"""write out the function definition"""
 		return 'let ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
 
+trans_counter = itertools.count(0) # TEMPORALY
 class Component(Signature):
 	"""A function in the specified library"""
 	def __init__(self, signature, petri):
 		super(Component, self).__init__(signature)
 		self.net = petri
 		self.name = func_id(signature['module'], signature['name'])
-		print()
-		print('in:', self._in, 'out:', self._out)
+		# print()
+		# print('in:', self._in, 'out:', self._out)
 		self._add_funcs()
 	def __str__(self):
 		return self.name
@@ -313,7 +135,7 @@ class Component(Signature):
 	def _add_funcs(self):
 		inlen = len(self._in)
 		for instance, subst in instantiate_generics(self.io_types(), PRIMITIVE_TYPES):
-			print(instance)
+			# print(instance)
 			# unpack the input and output
 			i, o = {}, {}
 			for t, w in zip(instance[:inlen], self._in.values()): # {"'a":2} -> [(ground("'a"), 2)]
@@ -323,22 +145,14 @@ class Component(Signature):
 			self._add_func(i, o, func_id_in_petri(self.id(), subst))
 	def _add_func(self, _in, _out, funcname):
 		"""add transition to the Petri Net"""
-
-		# for place, _ in _in:
-		# 	if not self.net.has_place(place):
-		# 		self.net.add_place(Place(place))
-		# for place, _ in _out:
-		# 	if not self.net.has_place(place):
-		# 		self.net.add_place(Place(place))
-		# issue: functions with same name from different modules
 		if isinstance(_in, dict):
 			_in = _in.items()
 		if isinstance(_out, dict):
 			_out = _out.items()
 		assert not self.net.has_transition(funcname)
 		self.net.add_transition(Transition(funcname))
+		# print(next(trans_counter), ': funcname:', funcname)
 		for place, weight in _in:
-			print('     place:', place, ', funcname:', funcname, ', weight:', weight)
 			if not self.net.has_place(place):
 				self.net.add_place(Place(place))
 			self.net.add_input(place, funcname, MultiArc([Variable('var')] * weight))

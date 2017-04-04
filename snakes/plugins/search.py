@@ -102,20 +102,19 @@ def extend(module):
 			return graph
 
 	class StateGraph(module.StateGraph):
-		def __init__(self, net, end=None, start=None, aug_graph=None):
+		def __init__(self, net, start=None, end=None):
+			''' the according Petri net will be augmented by clone transitions and fire-restrictions'''
 			assert isinstance(start, Marking)
 			assert end is not None
 			old = net.get_marking()
 			net.set_marking(start) # < tricky construct for stategraph
-			module.StateGraph.__init__(self, net) # a new petri net is created here
-			# this net will be augmented by clone transitions and fire-restrictions
+			module.StateGraph.__init__(self, net) # a new petri net is created inside
 			net.set_marking(old) # > make net clean again
+			assert self[0] == start
 			self.end_marking = end
 			self._add_clones()
-			# the max outgoing weights for places
-			W = dict((place.name, place.max_out()) for place in self.net.place())
-			# find all places that can be backwards reachable from the end marking
-			useful_places = self._useful_places()
+			W = dict((place.name, place.max_out()) for place in self.net.place()) # the max outgoing weights for places
+			useful_places = self._useful_places() # find all places that can be backwards reachable from the end marking
 			print("~~~~~~~~~~~~~Useful places:", useful_places, "~~~~~~~~~~~~~")
 			# let the net be evaluable in the local context itself, not safe
 			self.net.globals._env['this_net'] = self.net
@@ -126,17 +125,15 @@ def extend(module):
 			if self.net.has_place('unit'):
 				for tran in self.net.pre('unit'):
 					self.net.remove_output('unit', tran)
-			if aug_graph != None: # gv plugin should be loaded before this module
-				self.net.draw(aug_graph)
 			del W
-			print('----state graph created----')
+			# print('----state graph created----')
 		def _add_clones(self):
 			for place in self.net.place(): # clone transition for each type
 				t = place.name
 				tr = 'clone_' + t
 				self.net.add_transition(Transition(tr))
-				self.net.add_input(t, tr, Variable(t[:3]))
-				self.net.add_output(t, tr, MultiArc([Expression(t[:3]), Expression(t[:3])]))
+				self.net.add_input(t, tr, Variable('cl'))
+				self.net.add_output(t, tr, MultiArc([Expression('cl'), Expression('cl')]))
 		def _useful_places(self):
 			targets = []
 			for place in self.end_marking:
