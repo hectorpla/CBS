@@ -10,9 +10,9 @@ class searchError(Exception):
 	def __str__(self):
 		return repr('{0} -> {1}'.format(self.stateGraph.net.name, self.msg))
 
-class cannotReachError(searchError):
+class CannotReachErrorr(searchError):
 	def __init__(self, stateGraph, end_marking):
-		super(cannotReachError, self).__init__(stateGraph)
+		super(CannotReachErrorr, self).__init__(stateGraph)
 		self.end_marking = end_marking
 	def __str__(self):
 		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
@@ -219,7 +219,7 @@ def extend(module):
 			'''
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:
-				raise cannotReachError(self, self.end_marking) # !to modify
+				raise CannotReachErrorr(self, self.end_marking) # !to modify
 			route = [] # the current backwards route
 			node_st = [] # stack for nodes
 			branch_st = [] # the top stores the # braches of the current node
@@ -256,7 +256,7 @@ def extend(module):
 		def _node2node_path_rec(self):
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:
-				raise cannotReachError(self, self.end_marking)
+				raise CannotReachErrorr(self, self.end_marking)
 			self.n2n_helper([end_state])
 		def n2n_helper(self, route):
 			target = route[-1]

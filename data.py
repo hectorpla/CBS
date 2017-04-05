@@ -35,14 +35,15 @@ class IOWeightObject(object):
 		return w
 	def paras_list(self):
 		return list(map(first_elem_of_tuple, self.paras))
+	def params_of_type(self, t):
+		return list(para for para, typing in self.paras if typing == t)
 
-counter = itertools.count(1) # temperialy use it
+brch_counter = itertools.count(1) # temperialy use it
 class Branch(IOWeightObject):
 	def __init__(self, sigtr, brchbef, brchargs, brchtype='list'):
 		''' class for a branch of pattern matching
 			brch arg example: 
 			in |hd::tl -> ..., hd and tl are branch argument for this branch
-			NOTE: consider making this class the subclass of targetFunc!!!
 		'''
 		assert isinstance(sigtr, Signature) # a branch is derived from a function signature
 		assert isinstance(brchbef, tuple) and len(brchbef) == 2 # example (arg0, int list)
@@ -50,13 +51,18 @@ class Branch(IOWeightObject):
 			raise NotImplementedError('data structure other than list pattern matching not considered') 
 		
 		self.paras = brchargs
-		self.brchtype = brchtype
-		self.brch_id = next(counter)
 		self._in = self._in_weights()
 		self._out = sigtr._out # bad pattern? member access between siblings
+
+		self.sigtr = sigtr
+		self.brchbef = brchbef
+		self.brchtype = brchtype
+		self.brch_id = next(brch_counter)
 		carg, ctype = brchbef
 		self.matchline = 'match ' + carg + ' with'
 		self.start_marking = self._branch_marking(sigtr, ctype)
+	def get_start_marking(self):
+		return self.start_marking
 	def _branch_marking(self, sigtr, ctype):
 		''' bad. copy & paste, should change '''
 		ws = {}
@@ -67,11 +73,18 @@ class Branch(IOWeightObject):
 		if self.brchtype == 'list':
 			if len(self.paras) == 0:
 				return '| [] ->'
-			return '|' + '::'.join(self.paras_list()) + '->'
+			return '|' + '::'.join(self.paras_list()) + ' ->'
 		raise NotImplementedError('other cases')
 	def __str__(self):
 		'''for debug'''
 		return self.sketch()
+	def variables(self):
+		'''make Branch act as a SketchLine'''
+		compound = self.paras + self.sigtr.paras
+		compound.remove(self.brchbef)
+		return iter(compound)
+	def holes(self):
+		return []
 
 class Signature(IOWeightObject):
 	"""A base class for Component and Target"""
@@ -89,8 +102,6 @@ class Signature(IOWeightObject):
 		return len(self.paras)
 	def output_len(self):
 		return len(self.rtypes)
-	def params_of_type(self, t):
-		return list(para for para, typing in self.paras if typing == t)
 
 class TargetFunc(Signature):
 	def __init__(self, info):
@@ -111,6 +122,11 @@ class TargetFunc(Signature):
 	def sketch(self, dummy=None):
 		"""write out the function definition"""
 		return 'let ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
+	def variables(self):
+		'''make TargetFunc act as a SketchLine'''
+		return iter(self.paras)
+	def holes(self):
+		return []
 
 trans_counter = itertools.count(0) # TEMPORALY
 class Component(Signature):
@@ -119,8 +135,6 @@ class Component(Signature):
 		super(Component, self).__init__(signature)
 		self.net = petri
 		self.name = func_id(signature['module'], signature['name'])
-		# print()
-		# print('in:', self._in, 'out:', self._out)
 		self._add_funcs()
 	def __str__(self):
 		return self.name
@@ -136,8 +150,7 @@ class Component(Signature):
 		inlen = len(self._in)
 		for instance, subst in instantiate_generics(self.io_types(), PRIMITIVE_TYPES):
 			# print(instance)
-			# unpack the input and output
-			i, o = {}, {}
+			i, o = {}, {} # unpack the input and output
 			for t, w in zip(instance[:inlen], self._in.values()): # {"'a":2} -> [(ground("'a"), 2)]
 				i[t] = i.get(t, 0) + w
 			for t, w in zip(instance[inlen:], self._out.values()):
@@ -191,6 +204,7 @@ class SketchLine(object):
 	def holes(self):
 		return (hole for hole in self._holes)
 	def variables(self):
+		'''a polymorphistic method'''
 		return (var for var in self._vars)
 	def sketch(self, subst=None):
 		'''take care of the return line, if it is line like "let a = foo b", pass down to component'''
@@ -202,19 +216,17 @@ class SketchLine(object):
 
 class Sketch(object):
 	"""data structure for a code sketch in purpose to complete in SAT solver"""
-	def __init__(self, signature, sklines):
+	def __init__(self, sklines):
 		self.type_vars = {} # each bucket stores the variables having the same type
 		self.type_holes = {} # each bucket contains places
 		self.var_holes = {} # each bucket(keyed with variable) contains candidate places
 		self.hole_vars = {} # each bucket contains variables
 		self.s = z3.Solver()
 		self.hypos = {}
-		self.init_frame(signature, sklines)
-	def init_frame(self, signature, sklines):
-		self._add_signature(signature)
+		self.init_frame(sklines)
+	def init_frame(self, sklines):
 		for skline in sklines:
-			if isinstance(skline, SketchLine):
-				self._add_line(skline)
+			self._add_line(skline)
 	def _vars(self):
 		for typing in self.type_vars:
 			for var in self.type_vars[typing]:
@@ -223,31 +235,20 @@ class Sketch(object):
 		for hole_cands in self.hypos.values():
 			for hyp in hole_cands.values():
 				yield hyp
-	def _add_signature(self, sigtr):
-		'''Simply add parameters(variables) into types, and set up variable constraints frame'''
-		assert isinstance(sigtr, Signature)
-		for name, typing in sigtr.paras:
-			if typing not in self.type_vars:
-				self.type_vars[typing] = set()
-			self.type_vars[typing].add(name)
-			self.var_holes[name] = set()
-		# print('Sketch.add_signature: ')
-		# print('type_vars ' + str(self.type_vars))
 
 	def _add_line(self, line):
 		'''
 		A Synthesis instance use it: when encountering every hole, find all candidate variables
 		that will be filled here; at the same time, append holes to type-buckets
 		'''
-		assert isinstance(line, SketchLine)
 		for hole, typing in line.holes():
 			self.hole_vars[hole] = self.type_vars[typing].copy() # shallow copy
 			if typing not in self.type_holes:
 				self.type_holes[typing] = set()
 			self.type_holes[typing].add(hole)
 		for var, typing in line.variables():
-			if not is_variable(var): continue # don't add _(unit into the variable list)
-			assert is_variable(var)
+			if not (var[0].isalpha()): # be careful
+				continue # don't add _(unit into the variable list)
 			if typing not in self.type_vars:
 				self.type_vars[typing] = set()
 			self.type_vars[typing].add(var)

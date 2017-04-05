@@ -2,16 +2,20 @@ from data import *
 from sformat import *
 
 class SynBranch(object):
-	'''basically do the same work as synthesis'''
+	''' basically do the same work as synthesis.
+		be careful: a synbracn composes a synthesis, so when doing synthesis-related things,
+		refer to the synt member
+	'''
 	def __init__(self, synthesis, brch):
 		assert synthesis.stategraph is not None
 		self.synt = copy.copy(synthesis) # is copy good enough?
 		self.brch = brch
 		self.synt.start_marking = self.brch.start_marking
-		# endmrk = self.synt.stategraph.end_marking
+		self.synt.id_func_pool += self.brch.params_of_type(self.synt.tgttype) # extend the id pool
+		self.synt.firstlineobj = self.brch
+		# the end marking remains the same
 		print('BRANCH start', self.synt.start_marking)
 		print('BRANCH end', self.synt.end_marking)
-		# self.synt.stategraph = StateGraph(self.synt.net, start=startmrk, end=endmrk)
 	def _sketch_other_case(self):
 		return '| _ -> raise Not_found'
 	def _enum_brch_sketch(self):
@@ -56,28 +60,15 @@ class Synthesis(object):
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
 		self._construct_components()
-		self.enum_counter = itertools.count(0)
 		# self.print_comps()
-		self.start_marking = self.targetfunc.get_start_marking()
+		self.enum_counter = itertools.count(0)
+
+		# attributes allowed to be changed
+		self.start_marking = self.targetfunc.get_start_marking() 
 		self.end_marking = self.targetfunc.get_end_marking()
-
-	def _branch_out(self, brch):
-		'''create a new branch that does the subtask of synthesis
-		(a branch of pattern matching) '''
-		return SynBranch(self, brch)
-
-	def draw_net(self):
-		numnode = len(self.net._place) + len(self.net._trans)
-		if numnode > 200:
-			print('*************** Warning: PetriNet too large(' + str(numnode) 
-				+ ' nodes), drop drawing ***************')
-			return
-		self.net.draw('draws/' + self.targetfunc.name + '.eps')
-	def draw_augmented_net(self):
-		assert self.stategraph is not None
-		self.stategraph.net.draw('draws/' + self.targetfunc.name + '_aug.eps')
-	def draw_state_graph(self):
-		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
+		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
+		self.id_func_pool = self.targetfunc.params_of_type(self.tgttype) # the candidate pool from which id function pick return variable
+		self.firstlineobj = self.targetfunc # first line may be a TargetFunc or a Branch
 	def _construct_components(self):
 		'''establish component info'''
 		if self.comps is None:
@@ -86,10 +77,17 @@ class Synthesis(object):
 					if self.enab_func_para or not has_func_para(comp['paramTypes']))
 			self.comps = dict(temp)
 	def setup(self):
+		assert self.start_marking == self.firstlineobj.get_start_marking()
 		self.stategraph = StateGraph(self.net, start=self.start_marking, end=self.end_marking)
 		self.stategraph.build()
+		
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
+
+	def _branch_out(self, brch):
+		'''create a new branch that does the subtask of synthesis
+		(a branch of pattern matching) '''
+		return SynBranch(self, brch)
 	def start(self):
 		'''interface for outside'''
 		for sketch in self.enum_concrete_sketch():
@@ -115,40 +113,51 @@ class Synthesis(object):
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
 	def id_sketches(self):
-		'''return one of parameters'''
-		tgt = self.targetfunc.rtypes[0] # for only one return value
-		for para in self.targetfunc.params_of_type(tgt):
+		'''yield functions that return one of the parameters(in signature or branch)'''
+		for para in self.id_func_pool:
 			sklines = [self.targetfunc]
-			sklines.append(SketchLine(None, [], [(0, tgt)])) # single hole
+			sklines.append(SketchLine(None, [], [(0, self.tgttype)])) # single hole
 			formatter = SketchFormatter(sklines)
 			lines = formatter.format_out({0:para})
 			print_sketch(lines)
 			yield lines
+	def enum_branch_sketch(self):
+		print('--- START OF BRANCH ENUMERATING ---')
+		list_args = self.targetfunc.paras_of_list_type()
+		for arg, t in list_args:
+			# assume t as a string has the formate: ? list
+			elemtype, _ = t.split(' ')
+			branchings = []
+			branchings.append(Branch(self.targetfunc, (arg, t), []))
+			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)]))
+			combined = [self.targetfunc.sketch()] # not good
+			combined.append(branchings[0].matchline)
+			for b in branchings:
+				subsyn = self._branch_out(b)
+				partial_sketch = subsyn.accepting_partial()
+				if partial_sketch is None:
+					combined = None
+					break
+				print('  $$branch', b, 'synthesized successful')
+				combined.extend(partial_sketch)
+			if combined is None:
+				break
+			print('+++++++++++++')
+			yield combined
 	def enum_concrete_sketch(self, brchout=True):
-		'''enumerate completed sketch'''
-		yield from self.id_sketches() # identity functions
+		'''enumerate completed sketch, called by Synthesis object '''
+		yield from self.id_sketches()
 		print('-----------end of id sketches-------------')
 		if brchout:
-			list_args = self.targetfunc.paras_of_list_type()
-			for arg, t in list_args:
-				# assume t as a string has the formate: ? list
-				elemtype, _ = t.split(' ')
-				branchings = []
-				branchings.append(Branch(self.targetfunc, (arg, t), []))
-				branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)]))
-				combined = [self.targetfunc.sketch()] # not good
-				for b in branchings:
-					subsyn = self._branch_out(b)
-					partial_sketch = subsyn.accepting_partial()
-					if partial_sketch is None:
-						combined = None
-						break
-					combined.extend(partial_sketch)
-				if combined is None:
-					break
-				yield combined
-			print('-----------end of branched sketches-------------')
-		for sk, skformatter in self.inc_len_sketch_enum():
+			try:
+				yield from self.enum_branch_sketch()
+				print('-----------end of branched sketches-------------')
+			except snakes.plugins.search.CannotReachErrorr as cre:
+				print('///////')
+				print(cre)
+				exit()
+		print('--- START OF STRAIGHT ENUMERATING ---')
+		for sk, skformatter in self._inc_len_sketch_enum():
 			print_sketch(skformatter.format_out())
 			for concrtsk in sk.enum_subst():
 				print('--->')
@@ -157,8 +166,8 @@ class Synthesis(object):
 				yield concretelines
 			if brchout: print('-----------one seq ended-------------')
 
-	def inc_len_sketch_enum(self):
-		'''enumerate non-complete sketch'''
+	def _inc_len_sketch_enum(self):
+		'''enumerate non-complete sketches(with holes)'''
 		for seq in self.stategraph.enumerate_sketch_l(self._synlen):
 			print(seq)
 			yield self._gen_sketch(seq)
@@ -168,7 +177,7 @@ class Synthesis(object):
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		lines = []
-		lines.append(self.targetfunc)
+		lines.append(self.firstlineobj) # should be modified to append branch argument
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
@@ -176,16 +185,14 @@ class Synthesis(object):
 			subst = dict(zip(ext_syms_list(self.comps[func_id].io_types()), ground_terms(f)))
 			vartype = [instantiate(t, subst) for t in self.comps[func_id].rtypes]
 			holetype = [instantiate(t, subst) for t in self.comps[func_id].param_types()]
-			# ocaml specific: unit type
-			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartype]
+			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartype] # ocaml specific: unit type
 			holes = [next(counter) for i in range(self.comps[func_id].input_len())]
 			skline = SketchLine(self.comps[func_id], variables, list(zip(holes, holetype)))
 			lines.append(skline)
-		# set up return line
-		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())]
+		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())] # set up return line
 		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
 		lines.append(retline)
-		return Sketch(self.targetfunc, lines), SketchFormatter(lines)
+		return Sketch(lines), SketchFormatter(lines)
 
 	def stat(self):
 		"""show statistics after synthesis"""
@@ -195,3 +202,15 @@ class Synthesis(object):
 		comp_counter = itertools.count(0)
 		for c in self.comps:
 			print(next(comp_counter), c)
+	def draw_net(self):
+		numnode = len(self.net._place) + len(self.net._trans)
+		if numnode > 200:
+			print('*************** Warning: PetriNet too large(' + str(numnode) 
+				+ ' nodes), drop drawing ***************')
+			return
+		self.net.draw('draws/' + self.targetfunc.name + '.eps')
+	def draw_augmented_net(self):
+		assert self.stategraph is not None
+		self.stategraph.net.draw('draws/' + self.targetfunc.name + '_aug.eps')
+	def draw_state_graph(self):
+		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
