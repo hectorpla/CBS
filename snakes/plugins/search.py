@@ -11,12 +11,11 @@ class searchError(Exception):
 		return repr('{0} -> {1}'.format(self.stateGraph.net.name, self.msg))
 
 class CannotReachErrorr(searchError):
-	def __init__(self, stateGraph, end_marking):
+	def __init__(self, stateGraph):
 		super(CannotReachErrorr, self).__init__(stateGraph)
-		self.end_marking = end_marking
 	def __str__(self):
 		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
-			format(self.end_marking, self.stateGraph[0], self.stateGraph.net.name)
+			format(self.stateGraph.end_marking, self.stateGraph[0], self.stateGraph.net.name)
 		return repr(msg)
 		
 ################## Utility ##################
@@ -116,10 +115,9 @@ def extend(module):
 			W = dict((place.name, place.max_out()) for place in self.net.place()) # the max outgoing weights for places
 			useful_places = self._useful_places() # find all places that can be backwards reachable from the end marking
 			print("~~~~~~~~~~~~~Useful places:", useful_places, "~~~~~~~~~~~~~")
-			# let the net be evaluable in the local context itself, not safe
-			self.net.globals._env['this_net'] = self.net
-			# add guards for transition
-			self._set_fire_restrictions(W, useful_places)
+			
+			self.net.globals._env['this_net'] = self.net # let the net be evaluable in the local context itself, not safe
+			self._set_fire_restrictions(W, useful_places) # add guards for transition
 			# preventing generating tokens in unit place: remove all the ingoing edges to unit
 			# maybe not a good solution!!!
 			if self.net.has_place('unit'):
@@ -219,7 +217,7 @@ def extend(module):
 			'''
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:
-				raise CannotReachErrorr(self, self.end_marking) # !to modify
+				raise CannotReachErrorr(self) # !to modify
 			route = [] # the current backwards route
 			node_st = [] # stack for nodes
 			branch_st = [] # the top stores the # braches of the current node

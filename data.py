@@ -6,6 +6,7 @@ from snk import *
 import copy
 import z3
 import subprocess
+import time
 
 PRIMITIVE_TYPES = ['bool', 'int', 'char', 'string']
 
@@ -51,7 +52,7 @@ class Branch(IOWeightObject):
 			raise NotImplementedError('data structure other than list pattern matching not considered') 
 		
 		self.paras = brchargs
-		self._in = self._in_weights()
+		self._in = self._count_weights(self._symbol_types(self.paras))
 		self._out = sigtr._out # bad pattern? member access between siblings
 
 		self.sigtr = sigtr
@@ -61,6 +62,8 @@ class Branch(IOWeightObject):
 		carg, ctype = brchbef
 		self.matchline = 'match ' + carg + ' with'
 		self.start_marking = self._branch_marking(sigtr, ctype)
+	def _symbol_types(self, rawparam):
+		return [p[1] for p in rawparam if p[0] != '_']
 	def get_start_marking(self):
 		return self.start_marking
 	def _branch_marking(self, sigtr, ctype):
@@ -304,7 +307,6 @@ class Sketch(object):
 
 	def enum_subst(self):
 		'''enumerate possible completions of the code sketch'''
-		import time
 		self._add_var_cands()
 		self._set_up_constraints()
 		if DEBUG:

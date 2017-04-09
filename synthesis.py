@@ -20,9 +20,7 @@ class SynBranch(object):
 		return '| _ -> raise Not_found'
 	def _enum_brch_sketch(self):
 		self.synt.setup()
-		for sk in self.synt.enum_concrete_sketch(brchout=False):
-			brchsk = [self.brch.sketch()] + sk[1:]
-			yield brchsk # ignore the signature
+		yield from self.synt.enum_concrete_sketch(brchout=False)
 	def _enum_partial_sketch(self):
 		for brchsk in self._enum_brch_sketch():
 			runablesketch = [self.synt.targetfunc.sketch()]
@@ -31,7 +29,7 @@ class SynBranch(object):
 			runablesketch.extend([self._sketch_other_case()])
 			yield runablesketch, brchsk
 	def _test_partial(self, partial, outname):
-		print('partial test run')
+		print('  . partial test run')
 		return self.synt._test(partial, outname)
 	def accepting_partial(self):
 		'''if there is one return it, otherwise return None'''
@@ -39,8 +37,6 @@ class SynBranch(object):
 		outfile = self.synt.targetfunc.name + '_brch_' + str(self.brch.brch_id)
 		for torun, brchsk in self._enum_partial_sketch():
 			if self._test_partial(torun, outfile):
-				# print('partial runable:')
-				# print(torun)
 				return brchsk
 
 class Synthesis(object):
@@ -79,7 +75,9 @@ class Synthesis(object):
 	def setup(self):
 		assert self.start_marking == self.firstlineobj.get_start_marking()
 		self.stategraph = StateGraph(self.net, start=self.start_marking, end=self.end_marking)
+		start = time.clock()
 		self.stategraph.build()
+		print('state graph(' + str(len(self.stategraph)) + ' states) build time:', time.clock() - start)
 		
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
@@ -115,7 +113,7 @@ class Synthesis(object):
 	def id_sketches(self):
 		'''yield functions that return one of the parameters(in signature or branch)'''
 		for para in self.id_func_pool:
-			sklines = [self.targetfunc]
+			sklines = [self.firstlineobj]
 			sklines.append(SketchLine(None, [], [(0, self.tgttype)])) # single hole
 			formatter = SketchFormatter(sklines)
 			lines = formatter.format_out({0:para})
@@ -129,7 +127,7 @@ class Synthesis(object):
 			elemtype, _ = t.split(' ')
 			branchings = []
 			branchings.append(Branch(self.targetfunc, (arg, t), []))
-			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)]))
+			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('_', t)]))
 			combined = [self.targetfunc.sketch()] # not good
 			combined.append(branchings[0].matchline)
 			for b in branchings:
@@ -138,7 +136,7 @@ class Synthesis(object):
 				if partial_sketch is None:
 					combined = None
 					break
-				print('  $$branch', b, 'synthesized successful')
+				print('$$branch', b, 'synthesized successfully\n')
 				combined.extend(partial_sketch)
 			if combined is None:
 				break
@@ -147,11 +145,11 @@ class Synthesis(object):
 	def enum_concrete_sketch(self, brchout=True):
 		'''enumerate completed sketch, called by Synthesis object '''
 		yield from self.id_sketches()
-		print('-----------end of id sketches-------------')
+		print('--- END OF ID SKETCH ---')
 		if brchout:
 			try:
 				yield from self.enum_branch_sketch()
-				print('-----------end of branched sketches-------------')
+				print('--- END OF BRANCH ENUMERATING ---')
 			except snakes.plugins.search.CannotReachErrorr as cre:
 				print('///////')
 				print(cre)
@@ -159,12 +157,13 @@ class Synthesis(object):
 		print('--- START OF STRAIGHT ENUMERATING ---')
 		for sk, skformatter in self._inc_len_sketch_enum():
 			print_sketch(skformatter.format_out())
+			# print(skformatter._lines)
 			for concrtsk in sk.enum_subst():
 				print('--->')
 				concretelines = skformatter.format_out(concrtsk)
 				print_sketch(concretelines)
 				yield concretelines
-			if brchout: print('-----------one seq ended-------------')
+			if brchout: print('- one seq ended -')
 
 	def _inc_len_sketch_enum(self):
 		'''enumerate non-complete sketches(with holes)'''
@@ -203,7 +202,7 @@ class Synthesis(object):
 		for c in self.comps:
 			print(next(comp_counter), c)
 	def draw_net(self):
-		numnode = len(self.net._place) + len(self.net._trans)
+		numnode = len(self.net._place) + len(self.net._trans) # for convenience
 		if numnode > 200:
 			print('*************** Warning: PetriNet too large(' + str(numnode) 
 				+ ' nodes), drop drawing ***************')
