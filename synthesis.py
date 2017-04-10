@@ -15,10 +15,10 @@ class SynBranch(object):
 		# self.synt.firstlineobj = self.brch
 
 		# the end marking remains the same
-		print('BRANCH start', self.synt.start_marking)
+		print('BRANCH start', self.brch.start_marking)
 		print('BRANCH end', self.synt.end_marking)
 	def _sketch_other_case(self):
-		return '| _ -> raise Not_found'
+		return '| _ -> raise Syn_exn'
 	def _enum_brch_sketch(self):
 		# self.synt.setup()
 		# enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True):
@@ -104,10 +104,11 @@ class Synthesis(object):
 			next(self.enum_counter)
 			if self._test(sketch, self.targetfunc.name):
 				print('SUCCEEDED!!! ' + str(next(self.enum_counter)) + ' sketches enumerated')
-				break
+				return
 			print('FAILED')
 			if PAUSE:
 				input("PRESS ENTER TO CONTINUE.\n")
+		print('Failed...', str(next(self.enum_counter)) + ' sketches enumerated')
 	def _test(self, testsketch, outname):
 		'''compile/test the code against user-provided tests'''
 		outpath = 'out/' + outname + '.ml'
@@ -118,6 +119,7 @@ class Synthesis(object):
 	def _write_out(self, sketch, outpath):
 		'''write the completed sketch into a file'''
 		with open(outpath, 'w') as targetfile:
+			targetfile.write('exception Syn_exn\n\n')
 			for line in sketch:
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
@@ -194,6 +196,7 @@ class Synthesis(object):
 				yield from self._inc_enum(firstline, sg, stmrk)
 				return # stop yielding
 		# build a new state graph if neccessary
+		print('<build new graph>')
 		self.stategraphs.append(StateGraph(self.net, start=stmrk, end=self.end_marking))
 		self._build_graph(self.stategraphs[-1])
 		yield from self._inc_enum(firstline, self.stategraphs[-1], stmrk)
@@ -241,6 +244,28 @@ class Synthesis(object):
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
 	def draw_augmented_net(self):
 		assert self.stategraphs is not None
-		self.stategraph[0].net.draw('draws/' + self.targetfunc.name + '_aug.eps')
+		self.stategraphs[0].net.draw('draws/' + self.targetfunc.name + '_aug.eps')
 	def draw_state_graph(self):
 		self.stategraphs[0].draw('draws/' + self.targetfunc.name + '_sg.eps')
+	def draw_alpha(self, filename=None, relevant=False):
+		if filename is None:
+			filename = self.targetfunc.name
+		useful_places = self.stategraphs[0].useful_places
+		graph = self.net.construct_alpha_graph()
+		attr = dict(style="invis", splines="true")
+		todraw = plugins.gv.Graph(attr)
+		for out in graph:
+			if relevant and out not in useful_places:
+				continue
+			src = '_'.join(re.sub('[()*]', ' ', out).split())
+			todraw.add_node(src, dict(shape="rectangle"))
+			for in_ in graph[out]:
+				if relevant and in_ not in useful_places:
+					continue
+				dest = '_'.join(re.sub('[()*]', ' ', in_).split())
+				edge_attr = dict(arrowhead="normal", label='')
+				if out in useful_places and in_ in useful_places:
+					edge_attr['color'] = "red"
+				todraw.add_edge(src, dest, edge_attr)
+		todraw.render('draws/' + filename + '_alpha.eps')
+		# exit()

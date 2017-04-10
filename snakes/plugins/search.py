@@ -75,18 +75,18 @@ def extend(module):
 			In alpha(N) return all nodes that all backwards reachable from the target types
 			from the target places
 			'''
-			graph = self._construct_alpha_graph()
+			graph = self.construct_alpha_graph()
 			reachables = set()
 			q = deque([])
 			q.append(target)
 			while len(q) > 0:
 				place = q.popleft()
 				reachables.add(place)
-				for src in graph[target]:
+				for src in graph[place]:
 					if src not in reachables:
 						q.append(src)
 			return reachables
-		def _construct_alpha_graph(self):
+		def construct_alpha_graph(self):
 			'''
 			construct the simple reachability graph described as in the paper
 			'''
@@ -113,11 +113,11 @@ def extend(module):
 			self.end_marking = end
 			self._add_clones()
 			W = dict((place.name, place.max_out()) for place in self.net.place()) # the max outgoing weights for places
-			useful_places = self._useful_places() # find all places that can be backwards reachable from the end marking
-			print("~~~~~~~~~~~~~Useful places:", useful_places, "~~~~~~~~~~~~~")
+			self.useful_places = self._useful_places() # find all places that can be backwards reachable from the end marking
+			print("~~~~~~~~~~~~~Useful places:", self.useful_places, "~~~~~~~~~~~~~")
 			
 			self.net.globals._env['this_net'] = self.net # let the net be evaluable in the local context itself, not safe
-			self._set_fire_restrictions(W, useful_places) # add guards for transition
+			self._set_fire_restrictions(W, self.useful_places) # add guards for transition
 			# preventing generating tokens in unit place: remove all the ingoing edges to unit
 			# maybe not a good solution!!!
 			if self.net.has_place('unit'):
@@ -172,6 +172,7 @@ def extend(module):
 		def enumerate_sketch_l(self, stmrk=None, max_depth=10):
 			"""yet another generator warpping another, called by synthesis to enumerate sketches incly"""
 			start_state = self.get_state(stmrk)
+			print('enumerate_sketch_l:', start_state)
 			for length in range(2, max_depth+2):
 				print("^^^length", length)
 				yield from self.enumerate_sketch(start_state, length)
@@ -222,7 +223,7 @@ def extend(module):
 			'''
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:
-				raise CannotReachErrorr(self) # !to modify
+				raise CannotReachErrorr(self)
 			route = [] # the current backwards route
 			node_st = [] # stack for nodes
 			branch_st = [] # the top stores the # braches of the current node
