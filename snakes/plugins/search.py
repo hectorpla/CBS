@@ -165,15 +165,20 @@ def extend(module):
 				# if self._get_state(self.end_marking) in self._succ[state]:
 					return
 
-		def enumerate_sketch_l(self, max_depth=10):
-			"""yet another generator warpping another"""
+		def get_state(self, marking):
+			isinstance(marking, Marking)
+			return self._state[marking]
+
+		def enumerate_sketch_l(self, stmrk=None, max_depth=10):
+			"""yet another generator warpping another, called by synthesis to enumerate sketches incly"""
+			start_state = self.get_state(stmrk)
 			for length in range(2, max_depth+2):
 				print("^^^length", length)
-				yield from self.enumerate_sketch(length)
+				yield from self.enumerate_sketch(start_state, length)
 
-		def enumerate_sketch(self, depth=float('inf')): # bad pattern?: used internally and externally
+		def enumerate_sketch(self, start_state, depth=float('inf')): # bad pattern?: used internally and externally
 			"""list all possible transition paths from all state paths"""
-			for route in self._node2node_path(depth):
+			for route in self._node2node_path(start_state, depth):
 				print('path: {0}'.format(route))
 				for sequence in self._edge_enumerate_rec([], route, 1):
 					yield sequence
@@ -211,7 +216,7 @@ def extend(module):
 					sequence.pop()
 				if pos > rep_start: candidate.add(edge)
 			
-		def _node2node_path(self, depth=float('inf')):
+		def _node2node_path(self, start_state, depth=float('inf')):
 			'''
 			search from the end using backtracking, implemented iteratively
 			'''
@@ -234,7 +239,7 @@ def extend(module):
 				# print("pop -> %s" % str(target))
 				route.append(target)
 				if len(route) == depth or depth == float('inf'): # ugly: logic fallable
-					if target == 0: # issue: 0 -> 0 self cycle for infinite depth case
+					if target == start_state: # issue: 0 -> 0 self cycle for infinite depth case
 						path = route.copy()
 						path.reverse()
 						route.pop()

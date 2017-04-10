@@ -88,6 +88,9 @@ class Branch(IOWeightObject):
 		return iter(compound)
 	def holes(self):
 		return []
+	def id_func_variables(self):
+		tgttype = self.sigtr.rtypes[0]
+		return self.sigtr.id_func_variables() + self.params_of_type(tgttype)
 
 class Signature(IOWeightObject):
 	"""A base class for Component and Target"""
@@ -130,6 +133,9 @@ class TargetFunc(Signature):
 		return iter(self.paras)
 	def holes(self):
 		return []
+	def id_func_variables(self):
+		'''only for function signature that returns one value'''
+		return self.params_of_type(self.rtypes[0])
 
 trans_counter = itertools.count(0) # TEMPORALY
 class Component(Signature):

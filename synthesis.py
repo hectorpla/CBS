@@ -7,20 +7,24 @@ class SynBranch(object):
 		refer to the synt member
 	'''
 	def __init__(self, synthesis, brch):
-		assert synthesis.stategraph is not None
-		self.synt = copy.copy(synthesis) # is copy good enough?
+		assert synthesis.stategraphs is not None
+		self.synt = synthesis # copy.copy(synthesis) # is copy good enough?
 		self.brch = brch
-		self.synt.start_marking = self.brch.start_marking
-		self.synt.id_func_pool += self.brch.params_of_type(self.synt.tgttype) # extend the id pool
-		self.synt.firstlineobj = self.brch
+		# self.synt.start_marking = self.brch.start_marking
+		# self.synt.id_func_pool += self.brch.params_of_type(self.synt.tgttype) # extend the id pool
+		# self.synt.firstlineobj = self.brch
+
 		# the end marking remains the same
 		print('BRANCH start', self.synt.start_marking)
 		print('BRANCH end', self.synt.end_marking)
 	def _sketch_other_case(self):
 		return '| _ -> raise Not_found'
 	def _enum_brch_sketch(self):
-		self.synt.setup()
-		yield from self.synt.enum_concrete_sketch(brchout=False)
+		# self.synt.setup()
+		# enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True):
+		id_cand = self.brch.id_func_variables()
+		start = self.brch.start_marking
+		yield from self.synt.enum_concrete_sketch(self.brch, id_cand, start, brchout=False)
 	def _enum_partial_sketch(self):
 		for brchsk in self._enum_brch_sketch():
 			runablesketch = [self.synt.targetfunc.sketch()]
@@ -52,7 +56,7 @@ class Synthesis(object):
 		self.dirs = dirs
 		self.enab_func_para = enab_func_para
 		self.comps = None
-		self.stategraph = None
+		self.stategraphs = None
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
 		self._construct_components()
@@ -60,11 +64,12 @@ class Synthesis(object):
 		self.enum_counter = itertools.count(0)
 
 		# attributes allowed to be changed
+		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
+
 		self.start_marking = self.targetfunc.get_start_marking() 
 		self.end_marking = self.targetfunc.get_end_marking()
-		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
-		self.id_func_pool = self.targetfunc.params_of_type(self.tgttype) # the candidate pool from which id function pick return variable
-		self.firstlineobj = self.targetfunc # first line may be a TargetFunc or a Branch
+		# self.id_func_pool = self.targetfunc.params_of_type(self.tgttype) # the candidate pool from which id function pick return variable
+		# self.firstlineobj = self.targetfunc # first line may be a TargetFunc or a Branch
 	def _construct_components(self):
 		'''establish component info'''
 		if self.comps is None:
@@ -72,12 +77,17 @@ class Synthesis(object):
 					for comp in parse_multiple_dirs(self.dirs) 
 					if self.enab_func_para or not has_func_para(comp['paramTypes']))
 			self.comps = dict(temp)
-	def setup(self):
-		assert self.start_marking == self.firstlineobj.get_start_marking()
-		self.stategraph = StateGraph(self.net, start=self.start_marking, end=self.end_marking)
+
+	def _build_graph(self, sg):
+		'''wrapper for building a graph'''
 		start = time.clock()
-		self.stategraph.build()
-		print('state graph(' + str(len(self.stategraph)) + ' states) build time:', time.clock() - start)
+		sg.build()
+		print('state graph(' + str(len(sg)) + ' states) build time:', time.clock() - start)
+	def setup(self):
+		'''build up state graph according to the start'''
+		# assert self.start_marking == self.firstlineobj.get_start_marking()
+		self.stategraphs = [StateGraph(self.net, start=self.start_marking, end=self.end_marking)]
+		self._build_graph(self.stategraphs[0])
 		
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
@@ -88,7 +98,9 @@ class Synthesis(object):
 		return SynBranch(self, brch)
 	def start(self):
 		'''interface for outside'''
-		for sketch in self.enum_concrete_sketch():
+		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
+		firstlineobj = self.targetfunc
+		for sketch in self.enum_concrete_sketch(firstlineobj, id_cand):
 			next(self.enum_counter)
 			if self._test(sketch, self.targetfunc.name):
 				print('SUCCEEDED!!! ' + str(next(self.enum_counter)) + ' sketches enumerated')
@@ -110,10 +122,10 @@ class Synthesis(object):
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
-	def id_sketches(self):
+	def id_sketches(self, firstline,  varpool):
 		'''yield functions that return one of the parameters(in signature or branch)'''
-		for para in self.id_func_pool:
-			sklines = [self.firstlineobj]
+		for para in varpool:
+			sklines = [firstline]
 			sklines.append(SketchLine(None, [], [(0, self.tgttype)])) # single hole
 			formatter = SketchFormatter(sklines)
 			lines = formatter.format_out({0:para})
@@ -142,9 +154,17 @@ class Synthesis(object):
 				break
 			print('+++++++++++++')
 			yield combined
-	def enum_concrete_sketch(self, brchout=True):
-		'''enumerate completed sketch, called by Synthesis object '''
-		yield from self.id_sketches()
+	def enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True):
+		''' 
+		enumerate completed sketch, called from Synthesis object that stands alone or allowed by synbranch
+		concrete sketch example:
+				let make_string arg0 arg1 = # firstline, can also be pattern matching (firstline, stmrk)
+					# the body can be id function (id_varpool)
+					let v0 = Char.uppercase_ascii arg1 in # (sequence determined by strmk)
+					let v1 = String.make arg0 v0 in
+					v1 # variable with target type
+		'''
+		yield from self.id_sketches(firstline, id_varpool)
 		print('--- END OF ID SKETCH ---')
 		if brchout:
 			try:
@@ -155,7 +175,9 @@ class Synthesis(object):
 				print(cre)
 				exit()
 		print('--- START OF STRAIGHT ENUMERATING ---')
-		for sk, skformatter in self._inc_len_sketch_enum():
+		if stmrk is None:
+			stmrk = self.targetfunc.get_start_marking()
+		for sk, skformatter in self._inc_len_sketch_enum(firstline, stmrk):
 			print_sketch(skformatter.format_out())
 			# print(skformatter._lines)
 			for concrtsk in sk.enum_subst():
@@ -165,18 +187,27 @@ class Synthesis(object):
 				yield concretelines
 			if brchout: print('- one seq ended -')
 
-	def _inc_len_sketch_enum(self):
+	def _inc_len_sketch_enum(self, firstline, stmrk):
 		'''enumerate non-complete sketches(with holes)'''
-		for seq in self.stategraph.enumerate_sketch_l(self._synlen):
+		for sg in self.stategraphs:
+			if stmrk in sg:
+				yield from self._inc_enum(firstline, sg, stmrk)
+				return # stop yielding
+		# build a new state graph if neccessary
+		self.stategraphs.append(StateGraph(self.net, start=stmrk, end=self.end_marking))
+		self._build_graph(self.stategraphs[-1])
+		yield from self._inc_enum(firstline, self.stategraphs[-1], stmrk)
+	def _inc_enum(self, firstline, stategraph, start_marking):
+		'''helper for _inc_len_sketch_enum()'''
+		for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen):
 			print(seq)
-			yield self._gen_sketch(seq)
-
-	def _gen_sketch(self, sequence):
+			yield self._gen_sketch(seq, firstline)
+	def _gen_sketch(self, sequence, firstline):
 		'''create Sketch object for completion and SketchFormatter for output'''
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		lines = []
-		lines.append(self.firstlineobj) # should be modified to append branch argument
+		lines.append(firstline) # should be modified to append branch argument
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
@@ -209,7 +240,7 @@ class Synthesis(object):
 			return
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
 	def draw_augmented_net(self):
-		assert self.stategraph is not None
-		self.stategraph.net.draw('draws/' + self.targetfunc.name + '_aug.eps')
+		assert self.stategraphs is not None
+		self.stategraph[0].net.draw('draws/' + self.targetfunc.name + '_aug.eps')
 	def draw_state_graph(self):
-		self.stategraph.draw('draws/' + self.targetfunc.name + '_sg.eps')
+		self.stategraphs[0].draw('draws/' + self.targetfunc.name + '_sg.eps')
