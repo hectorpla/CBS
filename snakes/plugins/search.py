@@ -172,7 +172,7 @@ def extend(module):
 		def enumerate_sketch_l(self, stmrk=None, max_depth=10):
 			"""yet another generator warpping another, called by synthesis to enumerate sketches incly"""
 			start_state = self.get_state(stmrk)
-			print('enumerate_sketch_l:', start_state)
+			print('enumerate_sketch_l: start state -> ', start_state)
 			for length in range(2, max_depth+2):
 				print("^^^length", length)
 				yield from self.enumerate_sketch(start_state, length)
@@ -196,7 +196,7 @@ def extend(module):
 			except StopIteration:
 				next_diff = len(path)
 			candidate = self._succ[path[pos-1]][path[pos]].copy() # dynamically changing set
-			pool = list(candidate)
+			# pool = list(candidate)
 			yield from self._edge_enum_helper(sequence, path, pos, pos, next_diff, candidate)
 
 		def _edge_enum_helper(self, sequence, path, rep_start, pos, next_diff, candidate):
@@ -211,6 +211,8 @@ def extend(module):
 			# print(sequence)
 			for edge in pool:
 				candidate.remove(edge)
+				# if edge[0].name.startwith('clone_'): 
+				# 	continue # don't let clone appended to the sequence
 				sequence.extend([edge[0].name] * repeat) # tuple in entries: (transition, substitution)
 				for d in range(0, repeat):
 					yield from self._edge_enum_helper(sequence, path, rep_start, next_diff-d, next_diff, candidate)

@@ -10,9 +10,6 @@ class SynBranch(object):
 		assert synthesis.stategraphs is not None
 		self.synt = synthesis # copy.copy(synthesis) # is copy good enough?
 		self.brch = brch
-		# self.synt.start_marking = self.brch.start_marking
-		# self.synt.id_func_pool += self.brch.params_of_type(self.synt.tgttype) # extend the id pool
-		# self.synt.firstlineobj = self.brch
 
 		# the end marking remains the same
 		print('BRANCH start', self.brch.start_marking)
@@ -20,26 +17,29 @@ class SynBranch(object):
 	def _sketch_other_case(self):
 		return '| _ -> raise Syn_exn'
 	def _enum_brch_sketch(self):
-		# self.synt.setup()
-		# enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True):
 		id_cand = self.brch.id_func_variables()
 		start = self.brch.start_marking
 		yield from self.synt.enum_concrete_sketch(self.brch, id_cand, start, brchout=False)
-	def _enum_partial_sketch(self):
-		for brchsk in self._enum_brch_sketch():
-			runablesketch = [self.synt.targetfunc.sketch()]
-			runablesketch.extend([self.brch.matchline])
-			runablesketch.extend(brchsk)
-			runablesketch.extend([self._sketch_other_case()])
-			yield runablesketch, brchsk
+		for substart in self.brch.enum_sub_start():
+			print('sub start marking: ', substart)
+			brchsks = self.synt.enum_concrete_sketch(self.brch, [], substart, brchout=False)
+			yield from brchsks
+	def _make_runable(self, brchsk):
+		runablesketch = [self.synt.targetfunc.sketch()]
+		runablesketch.extend([self.brch.matchline])
+		runablesketch.extend(brchsk)
+		runablesketch.extend([self._sketch_other_case()])
+		# print(runablesketch)
+		return runablesketch
 	def _test_partial(self, partial, outname):
-		print('  . partial test run')
+		print('  (partial test run)')
 		return self.synt._test(partial, outname)
 	def accepting_partial(self):
 		'''if there is one return it, otherwise return None'''
 		print('finding accepting partial: ' + str(self.brch))
 		outfile = self.synt.targetfunc.name + '_brch_' + str(self.brch.brch_id)
-		for torun, brchsk in self._enum_partial_sketch():
+		for brchsk in self._enum_brch_sketch():
+			torun = self._make_runable(brchsk)
 			if self._test_partial(torun, outfile):
 				return brchsk
 
@@ -68,8 +68,6 @@ class Synthesis(object):
 
 		self.start_marking = self.targetfunc.get_start_marking() 
 		self.end_marking = self.targetfunc.get_end_marking()
-		# self.id_func_pool = self.targetfunc.params_of_type(self.tgttype) # the candidate pool from which id function pick return variable
-		# self.firstlineobj = self.targetfunc # first line may be a TargetFunc or a Branch
 	def _construct_components(self):
 		'''establish component info'''
 		if self.comps is None:
@@ -99,8 +97,7 @@ class Synthesis(object):
 	def start(self):
 		'''interface for outside'''
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
-		firstlineobj = self.targetfunc
-		for sketch in self.enum_concrete_sketch(firstlineobj, id_cand):
+		for sketch in self.enum_concrete_sketch(self.targetfunc, id_cand):
 			next(self.enum_counter)
 			if self._test(sketch, self.targetfunc.name):
 				print('SUCCEEDED!!! ' + str(next(self.enum_counter)) + ' sketches enumerated')
@@ -124,7 +121,7 @@ class Synthesis(object):
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
-	def id_sketches(self, firstline,  varpool):
+	def id_sketches(self, firstline, varpool):
 		'''yield functions that return one of the parameters(in signature or branch)'''
 		for para in varpool:
 			sklines = [firstline]
@@ -154,7 +151,7 @@ class Synthesis(object):
 				combined.extend(partial_sketch)
 			if combined is None:
 				break
-			print('+++++++++++++')
+			print('++++++Success in Brach Enumerating+++++++')
 			yield combined
 	def enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True):
 		''' 
@@ -180,8 +177,8 @@ class Synthesis(object):
 		if stmrk is None:
 			stmrk = self.targetfunc.get_start_marking()
 		for sk, skformatter in self._inc_len_sketch_enum(firstline, stmrk):
+			print(' ~sketche with holes~ ')
 			print_sketch(skformatter.format_out())
-			# print(skformatter._lines)
 			for concrtsk in sk.enum_subst():
 				print('--->')
 				concretelines = skformatter.format_out(concrtsk)
@@ -196,7 +193,8 @@ class Synthesis(object):
 				yield from self._inc_enum(firstline, sg, stmrk)
 				return # stop yielding
 		# build a new state graph if neccessary
-		print('<build new graph>')
+		print('<build new graph> new start:', stmrk)
+		# ???: in the new graph, endmark might not be reachable from startmark
 		self.stategraphs.append(StateGraph(self.net, start=stmrk, end=self.end_marking))
 		self._build_graph(self.stategraphs[-1])
 		yield from self._inc_enum(firstline, self.stategraphs[-1], stmrk)
@@ -268,4 +266,3 @@ class Synthesis(object):
 					edge_attr['color'] = "red"
 				todraw.add_edge(src, dest, edge_attr)
 		todraw.render('draws/' + filename + '_alpha.eps')
-		# exit()

@@ -51,27 +51,35 @@ class Branch(IOWeightObject):
 		if brchtype != 'list':
 			raise NotImplementedError('data structure other than list pattern matching not considered') 
 		
-		self.paras = brchargs
-		self._in = self._count_weights(self._symbol_types(self.paras))
-		self._out = sigtr._out # bad pattern? member access between siblings
-
-		self.sigtr = sigtr
-		self.brchbef = brchbef
+		self._brchbef = brchbef
 		self.brchtype = brchtype
 		self.brch_id = next(brch_counter)
-		carg, ctype = brchbef
-		self.matchline = 'match ' + carg + ' with'
-		self.start_marking = self._branch_marking(sigtr, ctype)
-	def _symbol_types(self, rawparam):
-		return [p[1] for p in rawparam if p[0] != '_']
+
+		self.sigtr = sigtr
+		self.paras = brchargs
+		self._allvars = self._all_variables()
+		self._in = self._count_weights(self._symbol_types(self.paras)) # params in the branch line
+		# self._out = sigtr._out # bad pattern? member access between siblings
+		self._allin = self._count_weights(map(second_elem_of_tuple, self._allvars)) # params in sigtr line and in brch line
+
+		self.matchline = 'match ' + self._brchbef[0] + ' with'
+		self.start_marking = self.original_marking()
+		self._variables = self._allvars # variables list that changes along with enumeration
 	def get_start_marking(self):
 		return self.start_marking
 	def _branch_marking(self, sigtr, ctype):
-		''' bad. copy & paste, should change '''
+		''' bad. copy & paste, should change  (now for verification)'''
 		ws = {}
 		for i, weight in self._in.items():
 			ws[i] = MultiSet(['t'] * weight)
 		return Marking(ws) + (sigtr.get_start_marking() - Marking({ctype:MultiSet(['t'])}))
+	def original_marking(self):
+		ws = {}
+		for i, weight in self._allin.items():
+			ws[i] = MultiSet(['t'] * weight)
+		orgmrk = Marking(ws)
+		assert orgmrk == self._branch_marking(self.sigtr, self._brchbef[1])
+		return orgmrk
 	def sketch(self):
 		if self.brchtype == 'list':
 			if len(self.paras) == 0:
@@ -81,16 +89,61 @@ class Branch(IOWeightObject):
 	def __str__(self):
 		'''for debug'''
 		return self.sketch()
+	def _all_variables(self):
+		'''all variables: arguments in the signature - decomposed variable + new variables generated'''
+		compound = self.sigtr.paras + self._symbol_args_types(lambda x : x, self.paras)
+		compound.remove(self._brchbef)
+		return compound
 	def variables(self):
 		'''make Branch act as a SketchLine'''
-		compound = self.paras + self.sigtr.paras
-		compound.remove(self.brchbef)
-		return iter(compound)
+		return iter(self._variables)
 	def holes(self):
+		''' like a signature, a branch line doesn't have any hole to fill in  '''
 		return []
+	def _symbol_args_types(self, func, rawparam):
+		''' return the list of vars of types (can be repeated) not having _ as variable name'''
+		return [func(p) for p in rawparam if p[0] != '_']
+	def _symbol_args(self, rawparam):
+		return self._symbol_args_types(first_elem_of_tuple, rawparam)
+	def _symbol_types(self, rawparam):
+		return self._symbol_args_types(second_elem_of_tuple, rawparam)
 	def id_func_variables(self):
+		''' picking from _all_variables '''
 		tgttype = self.sigtr.rtypes[0]
-		return self.sigtr.id_func_variables() + self.params_of_type(tgttype)
+		targetArgs = self.params_of_type(tgttype)
+		return self.sigtr.id_func_variables() + self._symbol_args(targetArgs)
+	def _single_tok_marking(self, typelist):
+		''' idempotent in terms of binding values to a single key '''
+		return Marking(dict(zip(typelist, itertools.repeat(MultiSet(['t'])))))
+	def sub_start_marking(self):
+		''' yield the subset of the branch's start marking, each place only having one token
+			taking one type away at at time
+		'''
+		places = list(self.start_marking.keys())
+		full_marking = self._single_tok_marking(places)
+		removables = list(set(places) - set(map(second_elem_of_tuple, self.paras)))
+		print(removables)
+		for l in range(1, len(removables) + 1):
+			print('removing', l, 'types')
+			for rmtypes in itertools.combinations(removables, l):
+				rm_marking = self._single_tok_marking(rmtypes)
+				print('removed', rm_marking)
+				yield full_marking - rm_marking
+	def enum_sub_start(self):
+		''' rule out params in function signature one by one 
+			and return corresponding starting marking '''
+		removables = self.sigtr.paras.copy()
+		removables.remove(self._brchbef)
+		for l in range(1, len(removables) + 1):
+			for rmargs in itertools.combinations(removables, l):
+				# BECAREFUL: change the internal state of the class
+				self._variables = list(set(self._allvars) - set(rmargs))
+				# print(set(self._allvars), set(rmargs))
+				mrk = self._single_tok_marking(map(second_elem_of_tuple, self._variables))
+				yield mrk
+
+	def restore_variables(self):
+		self._variables = self._allvars
 
 class Signature(IOWeightObject):
 	"""A base class for Component and Target"""
