@@ -102,7 +102,7 @@ def extend(module):
 
 	class StateGraph(module.StateGraph):
 		def __init__(self, net, start=None, end=None):
-			''' the according Petri net will be augmented by clone transitions and fire-restrictions'''
+			''' the according Petri net will be augmented by clone transitions and fire-restrictions '''
 			assert isinstance(start, Marking)
 			assert end is not None
 			old = net.get_marking()
@@ -191,37 +191,41 @@ def extend(module):
 				yield sequence
 				return
 			arc = (path[pos-1], path[pos])
-			try:
-				next_diff = next(i for i in range(pos + 1, len(path)) if (path[i-1], path[i]) != arc)
-			except StopIteration:
-				next_diff = len(path)
-			candidate = self._succ[path[pos-1]][path[pos]].copy() # dynamically changing set
-			# pool = list(candidate)
-			yield from self._edge_enum_helper(sequence, path, pos, pos, next_diff, candidate)
+			for edge in self._succ[path[pos-1]][path[pos]]:
+				sequence.append(edge[0].name)
+				yield from self._edge_enumerate_rec(sequence, path, pos + 1)
+				sequence.pop()
+		# 	try:
+		# 		next_diff = next(i for i in range(pos + 1, len(path)) if (path[i-1], path[i]) != arc)
+		# 	except StopIteration:
+		# 		next_diff = len(path)
+		# 	candidate = self._succ[path[pos-1]][path[pos]].copy() # dynamically changing set
+		# 	# pool = list(candidate)
+		# 	yield from self._edge_enum_helper(sequence, path, pos, pos, next_diff, candidate)
 
-		def _edge_enum_helper(self, sequence, path, rep_start, pos, next_diff, candidate):
-			"""helper for _edge_enumerate_rec to prevent listing replicate paths"""
-			if pos == next_diff:
-				yield from self._edge_enumerate_rec(sequence, path, next_diff)
-				return
-			if len(candidate) == 0:
-				return
-			pool = list(candidate)
-			repeat = next_diff - pos
-			# print(sequence)
-			for edge in pool:
-				candidate.remove(edge)
-				# if edge[0].name.startwith('clone_'): 
-				# 	continue # don't let clone appended to the sequence
-				sequence.extend([edge[0].name] * repeat) # tuple in entries: (transition, substitution)
-				for d in range(0, repeat):
-					yield from self._edge_enum_helper(sequence, path, rep_start, next_diff-d, next_diff, candidate)
-					sequence.pop()
-				if pos > rep_start: candidate.add(edge)
+		# def _edge_enum_helper(self, sequence, path, rep_start, pos, next_diff, candidate):
+		# 	"""helper for _edge_enumerate_rec to prevent listing replicate paths"""
+		# 	if pos == next_diff:
+		# 		yield from self._edge_enumerate_rec(sequence, path, next_diff)
+		# 		return
+		# 	if len(candidate) == 0:
+		# 		return
+		# 	pool = list(candidate)
+		# 	repeat = next_diff - pos
+		# 	# print(sequence)
+		# 	for edge in pool:
+		# 		candidate.remove(edge)
+		# 		# if edge[0].name.startwith('clone_'): 
+		# 		# 	continue # don't let clone appended to the sequence
+		# 		sequence.extend([edge[0].name] * repeat) # tuple in entries: (transition, substitution)
+		# 		for d in range(0, repeat):
+		# 			yield from self._edge_enum_helper(sequence, path, rep_start, next_diff-d, next_diff, candidate)
+		# 			sequence.pop()
+		# 		if pos > rep_start: candidate.add(edge)
 			
 		def _node2node_path(self, start_state, depth=float('inf')):
 			'''
-			search from the end using backtracking, implemented iteratively
+				search from the end using backtracking, implemented iteratively
 			'''
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:

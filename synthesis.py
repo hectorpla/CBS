@@ -21,7 +21,7 @@ class SynBranch(object):
 		start = self.brch.start_marking
 		yield from self.synt.enum_concrete_sketch(self.brch, id_cand, start, brchout=False)
 		for substart in self.brch.enum_sub_start():
-			print('sub start marking: ', substart)
+			print('CHANGE START VAR: sub start marking:', substart)
 			brchsks = self.synt.enum_concrete_sketch(self.brch, [], substart, brchout=False)
 			yield from brchsks
 	def _make_runable(self, brchsk):
@@ -47,6 +47,7 @@ class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
 	def __init__(self, parent=None, sigtr_file=None, enab_func_para=True):
 		sigtr = parse_json(sigtr_file)
+		self.sigtr_dict = sigtr
 		self.targetfunc = TargetFunc(sigtr)
 		if self.targetfunc is None:
 			raise parseError('format for the target function is incorrect')
@@ -60,7 +61,7 @@ class Synthesis(object):
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
 		self._construct_components()
-		# self.print_comps()
+		self.print_comps()
 		self.enum_counter = itertools.count(0)
 
 		# attributes allowed to be changed
@@ -71,14 +72,17 @@ class Synthesis(object):
 	def _construct_components(self):
 		'''establish component info'''
 		if self.comps is None:
-			temp = ((func_id(comp['module'], comp['name']), Component(comp, self.net))
+			comps = ((func_id(comp['module'], comp['name']), Component(comp, self.net))
 					for comp in parse_multiple_dirs(self.dirs) 
 					if self.enab_func_para or not has_func_para(comp['paramTypes']))
-			self.comps = dict(temp)
+			self.comps = dict(comps)
+		self.sigtr_dict['module'] = ''
+		self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
 
 	def _build_graph(self, sg):
 		'''wrapper for building a graph'''
 		start = time.clock()
+		# ...(disable) recursive component
 		sg.build()
 		print('state graph(' + str(len(sg)) + ' states) build time:', time.clock() - start)
 	def setup(self):
@@ -94,10 +98,11 @@ class Synthesis(object):
 		'''create a new branch that does the subtask of synthesis
 		(a branch of pattern matching) '''
 		return SynBranch(self, brch)
-	def start(self):
+	def start(self, enab_brch=True):
 		'''interface for outside'''
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
-		for sketch in self.enum_concrete_sketch(self.targetfunc, id_cand):
+		for sketch in self.enum_concrete_sketch(self.targetfunc, id_cand, 
+					brchout=enab_brch, rec_funcname=self.targetfunc.name):
 			next(self.enum_counter)
 			if self._test(sketch, self.targetfunc.name):
 				print('SUCCEEDED!!! ' + str(next(self.enum_counter)) + ' sketches enumerated')
@@ -138,7 +143,7 @@ class Synthesis(object):
 			elemtype, _ = t.split(' ')
 			branchings = []
 			branchings.append(Branch(self.targetfunc, (arg, t), []))
-			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('_', t)]))
+			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)]))
 			combined = [self.targetfunc.sketch()] # not good
 			combined.append(branchings[0].matchline)
 			for b in branchings:
@@ -153,7 +158,7 @@ class Synthesis(object):
 				break
 			print('++++++Success in Brach Enumerating+++++++')
 			yield combined
-	def enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True):
+	def enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True, rec_funcname=None):
 		''' 
 		enumerate completed sketch, called from Synthesis object that stands alone or allowed by synbranch
 		concrete sketch example:
@@ -176,9 +181,11 @@ class Synthesis(object):
 		print('--- START OF STRAIGHT ENUMERATING ---')
 		if stmrk is None:
 			stmrk = self.targetfunc.get_start_marking()
-		for sk, skformatter in self._inc_len_sketch_enum(firstline, stmrk):
+		for sk, skformatter in self._inc_len_sketch_enum(firstline, stmrk, rec_funcname):
 			print(' ~sketche with holes~ ')
 			print_sketch(skformatter.format_out())
+			# branch: recursive call restriction
+
 			for concrtsk in sk.enum_subst():
 				print('--->')
 				concretelines = skformatter.format_out(concrtsk)
@@ -186,49 +193,61 @@ class Synthesis(object):
 				yield concretelines
 			if brchout: print('- one seq ended -')
 
-	def _inc_len_sketch_enum(self, firstline, stmrk):
+	def _inc_len_sketch_enum(self, firstline, stmrk, rec_funcname):
 		'''enumerate non-complete sketches(with holes)'''
 		for sg in self.stategraphs:
 			if stmrk in sg:
-				yield from self._inc_enum(firstline, sg, stmrk)
+				yield from self._inc_enum(firstline, sg, stmrk, rec_funcname)
 				return # stop yielding
 		# build a new state graph if neccessary
 		print('<build new graph> new start:', stmrk)
 		# ???: in the new graph, endmark might not be reachable from startmark
 		self.stategraphs.append(StateGraph(self.net, start=stmrk, end=self.end_marking))
 		self._build_graph(self.stategraphs[-1])
-		yield from self._inc_enum(firstline, self.stategraphs[-1], stmrk)
-	def _inc_enum(self, firstline, stategraph, start_marking):
+		yield from self._inc_enum(firstline, self.stategraphs[-1], stmrk, rec_funcname)
+	def _inc_enum(self, firstline, stategraph, start_marking, rec_funcname):
 		'''helper for _inc_len_sketch_enum()'''
 		for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen):
+			if rec_funcname is not None and rec_funcname in seq:
+				continue
 			print(seq)
 			yield self._gen_sketch(seq, firstline)
+
 	def _gen_sketch(self, sequence, firstline):
 		'''create Sketch object for completion and SketchFormatter for output'''
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		lines = []
 		lines.append(firstline) # should be modified to append branch argument
+		rec_holes = []
 		for f in sequence:
 			if f.startswith('clone_'): # watchout: mind the name confilction 
 				continue
 			func_id = restore_id(f) # recover the name of the function from ground tag
 			subst = dict(zip(ext_syms_list(self.comps[func_id].io_types()), ground_terms(f)))
-			vartype = [instantiate(t, subst) for t in self.comps[func_id].rtypes]
-			holetype = [instantiate(t, subst) for t in self.comps[func_id].param_types()]
-			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartype] # ocaml specific: unit type
-			holes = [next(counter) for i in range(self.comps[func_id].input_len())]
-			skline = SketchLine(self.comps[func_id], variables, list(zip(holes, holetype)))
+			vartypes = [instantiate(t, subst) for t in self.comps[func_id].rtypes]
+			holetypes = [instantiate(t, subst) for t in self.comps[func_id].param_types()]
+
+			variables = [('_' if rt == 'unit' else next(var_gen), rt) for rt in vartypes] # ocaml specific: unit type
+			holenames = [next(counter) for i in range(self.comps[func_id].input_len())]
+			holes = list(zip(holenames, holetypes))
+			skline = SketchLine(self.comps[func_id], variables, holes)
 			lines.append(skline)
+			if f == self.targetfunc.name: # record the holes associated with recursive calls
+				rec_holes.append(holes)
 		return_holes = [next(counter) for _ in range(self.targetfunc.output_len())] # set up return line
 		retline = SketchLine(None, [], list(zip(return_holes, self.targetfunc.rtypes)))
 		lines.append(retline)
-		return Sketch(lines), SketchFormatter(lines)
+		sk = Sketch(lines)
+		if len(rec_holes) > 0:
+			sk.add_rec_constraints(rec_holes, firstline)
+		return sk, SketchFormatter(lines)
+	def _confine_rec_holes(self):
+		'''make the constraints that '''
 
 	def stat(self):
 		"""show statistics after synthesis"""
 		raise NotImplementedError('not yet implemented')
-
 	def print_comps(self):
 		comp_counter = itertools.count(0)
 		for c in self.comps:

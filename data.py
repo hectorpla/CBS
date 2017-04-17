@@ -91,27 +91,30 @@ class Branch(IOWeightObject):
 		return self.sketch()
 	def _all_variables(self):
 		'''all variables: arguments in the signature - decomposed variable + new variables generated'''
-		compound = self.sigtr.paras + self._symbol_args_types(lambda x : x, self.paras)
+		compound = self.sigtr.paras + self._symbol_args_types(self.paras)
 		compound.remove(self._brchbef)
 		return compound
+	def brch_variables(self):
+		'''return the non-wildcard arguments in pattern line, called by Sketch'''
+		return self._symbol_args_types(self.paras)
 	def variables(self):
 		'''make Branch act as a SketchLine'''
 		return iter(self._variables)
 	def holes(self):
 		''' like a signature, a branch line doesn't have any hole to fill in  '''
 		return []
-	def _symbol_args_types(self, func, rawparam):
+	def _symbol_args_types(self, rawparam, func=lambda x : x):
 		''' return the list of vars of types (can be repeated) not having _ as variable name'''
 		return [func(p) for p in rawparam if p[0] != '_']
 	def _symbol_args(self, rawparam):
-		return self._symbol_args_types(first_elem_of_tuple, rawparam)
+		return self._symbol_args_types(rawparam, first_elem_of_tuple)
 	def _symbol_types(self, rawparam):
-		return self._symbol_args_types(second_elem_of_tuple, rawparam)
+		return self._symbol_args_types(rawparam, second_elem_of_tuple)
 	def id_func_variables(self):
 		''' picking from _all_variables '''
 		tgttype = self.sigtr.rtypes[0]
 		targetArgs = self.params_of_type(tgttype)
-		return self.sigtr.id_func_variables() + self._symbol_args(targetArgs)
+		return self.sigtr.id_func_variables() + list(filter(lambda x: x != '_', targetArgs))
 	def _single_tok_marking(self, typelist):
 		''' idempotent in terms of binding values to a single key '''
 		return Marking(dict(zip(typelist, itertools.repeat(MultiSet(['t'])))))
@@ -141,7 +144,6 @@ class Branch(IOWeightObject):
 				# print(set(self._allvars), set(rmargs))
 				mrk = self._single_tok_marking(map(second_elem_of_tuple, self._variables))
 				yield mrk
-
 	def restore_variables(self):
 		self._variables = self._allvars
 
@@ -180,7 +182,7 @@ class TargetFunc(Signature):
 		return [para for para in self.paras if 'list' in para[1]]
 	def sketch(self, dummy=None):
 		"""write out the function definition"""
-		return 'let ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
+		return 'let rec ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
 	def variables(self):
 		'''make TargetFunc act as a SketchLine'''
 		return iter(self.paras)
@@ -242,7 +244,7 @@ class Component(Signature):
 		sk = "let "
 		sk += comma_join(varlist)
 		sk += " = "
-		if self.name in ['^']:
+		if self.name in ['^', '=']:
 			assert len(self.paras) == 2
 			self.name = '(' + self.name + ')' # be careful about this inconsistency
 		sk += self.name
@@ -289,6 +291,8 @@ class Sketch(object):
 	def init_frame(self, sklines):
 		for skline in sklines:
 			self._add_line(skline)
+		self._add_var_cands() # good to put here
+		self._set_up_constraints()
 	def _vars(self):
 		for typing in self.type_vars:
 			for var in self.type_vars[typing]:
@@ -300,8 +304,8 @@ class Sketch(object):
 
 	def _add_line(self, line):
 		'''
-		A Synthesis instance use it: when encountering every hole, find all candidate variables
-		that will be filled here; at the same time, append holes to type-buckets
+		when encountering every hole, find all candidate variables that will be filled here; 
+		at the same time, append holes to type-buckets
 		'''
 		for hole, typing in line.holes():
 			self.hole_vars[hole] = self.type_vars[typing].copy() # shallow copy
@@ -316,14 +320,32 @@ class Sketch(object):
 			self.type_vars[typing].add(var)
 
 	def _add_var_cands(self):
-		''' 
-		After adding all lines(including signature and return statement), 
-		only hole constraints are set; variable constraints are added here
-		'''
+		''' candidate variables for holes are collected here '''
 		for var, typing in self._vars():
 			self.var_holes[var] = set()
 			candiate_holes = (hole for hole in self.type_holes[typing] if var in self.hole_vars[hole])
 			self.var_holes[var].update(candiate_holes)
+	def add_rec_constraints(self, holes_matrix, brch):
+		''' add constraints to the holes(parameters) in recursive calls
+		holes_matrix is like [[h3,h4], [h8,h9]], where hi is (#, type) tuple, all rows align accrd to type
+		for a recursive call, ex, foo (v:int) (w:intlist), the vcand_matrix is like
+				[[hd], [tl]], hd typed with int, tl typed with intlist
+		'''
+		try:
+			brch_vars = brch.brch_variables()
+		except :
+			print('no need to add recursive constraints')
+			return
+		# print('!!!!!')
+		# print(holes_matrix)
+		# print(self.hypos)
+		ttypes = map(second_elem_of_tuple, holes_matrix[0])
+		vcand_matrix = [[p[0] for p in brch_vars if p[1] == t] for t in ttypes]
+		for hs in holes_matrix:
+			holes = map(first_elem_of_tuple, hs)
+			for hole, variables in zip(holes, vcand_matrix):
+				vcandlist = [self.hypos[hole][v] for v in variables]
+				self._exact_one_constraint(vcandlist)
 
 	def _set_up_constraints(self):
 		'''set up constraint for each hole and variable respectively'''
@@ -334,9 +356,14 @@ class Sketch(object):
 			vcandlist = list(self.hypos[hole].values())
 			if DEBUG:
 				print('HOLE CONSTRAINTS LIST: ' + str(vcandlist))
-			self.s.add(z3.AtMost(vcandlist + [1])) # all add up to 0 or 1
-			self.s.add(z3.Or(vcandlist))
+			self._exact_one_constraint(vcandlist)
 		self._set_var_constraints()
+
+	def _exact_one_constraint(self, hs):
+		''' exactly one of hs is true '''
+		assert isinstance(hs, list)
+		self.s.add(z3.AtMost(hs + [1])) # all add up to 0 or 1
+		self.s.add(z3.Or(hs))
 
 	def _set_var_constraints(self):
 		for var in self.var_holes:
@@ -366,8 +393,8 @@ class Sketch(object):
 
 	def enum_subst(self):
 		'''enumerate possible completions of the code sketch'''
-		self._add_var_cands()
-		self._set_up_constraints()
+		# self._add_var_cands()
+		# self._set_up_constraints()
 		if DEBUG:
 			print('Sketch.enum_subst: ')
 			print('type_vars: ' + str(self.type_vars))
