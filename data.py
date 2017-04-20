@@ -8,6 +8,12 @@ import z3
 import subprocess
 import time
 
+class ConstraintError(Exception):
+	def __init__(self, msg=None):
+		self.msg = msg
+	def __str__(self):
+		return repr(msg)
+
 PRIMITIVE_TYPES = ['bool', 'int', 'char', 'string']
 
 DEBUG = False
@@ -83,7 +89,7 @@ class Branch(IOWeightObject):
 	def sketch(self):
 		if self.brchtype == 'list':
 			if len(self.paras) == 0:
-				return '| [] ->'
+				return '|[] ->'
 			return '|' + '::'.join(self.paras_list()) + ' ->'
 		raise NotImplementedError('other cases')
 	def __str__(self):
@@ -180,9 +186,9 @@ class TargetFunc(Signature):
 	def paras_of_list_type(self):
 		'''very similar to params_of_type'''
 		return [para for para in self.paras if 'list' in para[1]]
-	def sketch(self, dummy=None):
+	def sketch(self, dummy=None, rec=True):
 		"""write out the function definition"""
-		return 'let rec ' + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
+		return 'let ' + ('rec ' if rec else '') + self.name + ' ' + ' '.join(self.paras_list()) + ' ='
 	def variables(self):
 		'''make TargetFunc act as a SketchLine'''
 		return iter(self.paras)
@@ -336,15 +342,14 @@ class Sketch(object):
 		except :
 			print('no need to add recursive constraints')
 			return
-		# print('!!!!!')
-		# print(holes_matrix)
-		# print(self.hypos)
 		ttypes = map(second_elem_of_tuple, holes_matrix[0])
 		vcand_matrix = [[p[0] for p in brch_vars if p[1] == t] for t in ttypes]
 		for hs in holes_matrix:
 			holes = map(first_elem_of_tuple, hs)
 			for hole, variables in zip(holes, vcand_matrix):
 				vcandlist = [self.hypos[hole][v] for v in variables]
+				if len(vcandlist) == 0:
+					raise ConstraintError('recursive call, not enough variables')
 				self._exact_one_constraint(vcandlist)
 
 	def _set_up_constraints(self):

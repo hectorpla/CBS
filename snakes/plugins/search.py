@@ -20,10 +20,8 @@ class CannotReachErrorr(searchError):
 		
 ################## Utility ##################
 def weight_of_arc(e):
-			if isinstance(e, MultiArc):
-				return len(e)
-			else:
-				return 1
+	assert isinstance(e, MultiArc)
+	return len(e)
 
 # make the state graph suitable for using net marking as part of the transition guards
 # ie., in the namespace of a net, expression of itself is also evaluable
@@ -31,17 +29,16 @@ def weight_of_arc(e):
 def extend(module):
 	class Place(module.Place):
 		def max_out(self):
-			'''
-			find out the maximum outgoing weight
-			'''
+			''' find out the maximum outgoing weight '''
 			if len(self.post) == 0:
 				return 0
-			return max(map(weight_of_arc, self.post))
+			return max(map(weight_of_arc, self.post.values()))
 
 	class Transition(module.Transition):
 		def is_nonincreasing(self):
-			"""check if this transition has non-increasing property, i.e. consuming more tokens
-			   than producing, no tokens with new types produced 
+			"""
+			check if this transition has non-increasing property, i.e. consuming more tokens
+			than producing, no tokens with new types produced 
 			"""
 			counts = {}
 			for i, arc in self._input.items():
@@ -113,6 +110,7 @@ def extend(module):
 			self.end_marking = end
 			self._add_clones()
 			W = dict((place.name, place.max_out()) for place in self.net.place()) # the max outgoing weights for places
+			print('~~~ Maximum Outgoing Weight', W)
 			self.useful_places = self._useful_places() # find all places that can be backwards reachable from the end marking
 			print("~~~~~~~~~~~~~Useful places:", self.useful_places, "~~~~~~~~~~~~~")
 			
@@ -130,7 +128,7 @@ def extend(module):
 				t = place.name
 				tr = 'clone_' + t
 				self.net.add_transition(Transition(tr))
-				self.net.add_input(t, tr, Variable('cl'))
+				self.net.add_input(t, tr, MultiArc([Variable('cl')]))
 				self.net.add_output(t, tr, MultiArc([Expression('cl'), Expression('cl')]))
 		def _useful_places(self):
 			targets = []
@@ -181,6 +179,7 @@ def extend(module):
 			"""list all possible transition paths from all state paths"""
 			for route in self._node2node_path(start_state, depth):
 				print('path: {0}'.format(route))
+				# print('marking:', list(map(lambda x: self[x], route)))
 				for sequence in self._edge_enumerate_rec([], route, 1):
 					yield sequence
 

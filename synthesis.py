@@ -6,16 +6,19 @@ class SynBranch(object):
 		be careful: a synbracn composes a synthesis, so when doing synthesis-related things,
 		refer to the synt member
 	'''
-	def __init__(self, synthesis, brch):
+	def __init__(self, synthesis, brch, collection, sb_id):
 		assert synthesis.stategraphs is not None
 		self.synt = synthesis # copy.copy(synthesis) # is copy good enough?
 		self.brch = brch
+		self.sb_collection = collection
+		self.sb_id = sb_id # the order this branch is in the synthesis
+		self.accepting_partial = None
 
 		# the end marking remains the same
 		print('BRANCH start', self.brch.start_marking)
 		print('BRANCH end', self.synt.end_marking)
 	def _sketch_other_case(self):
-		return '| _ -> raise Syn_exn'
+		return '|_ -> raise Syn_exn'
 	def _enum_brch_sketch(self):
 		id_cand = self.brch.id_func_variables()
 		start = self.brch.start_marking
@@ -27,6 +30,9 @@ class SynBranch(object):
 	def _make_runable(self, brchsk):
 		runablesketch = [self.synt.targetfunc.sketch()]
 		runablesketch.extend([self.brch.matchline])
+		for sb in self.sb_collection[:-1]: # add branch codes sythesized successfully previously
+			assert sb.accepting_partial is not None
+			runablesketch.extend(sb.accepting_partial)
 		runablesketch.extend(brchsk)
 		runablesketch.extend([self._sketch_other_case()])
 		# print(runablesketch)
@@ -34,13 +40,14 @@ class SynBranch(object):
 	def _test_partial(self, partial, outname):
 		print('  (partial test run)')
 		return self.synt._test(partial, outname)
-	def accepting_partial(self):
+	def get_accepting_partial(self):
 		'''if there is one return it, otherwise return None'''
 		print('finding accepting partial: ' + str(self.brch))
 		outfile = self.synt.targetfunc.name + '_brch_' + str(self.brch.brch_id)
 		for brchsk in self._enum_brch_sketch():
 			torun = self._make_runable(brchsk)
 			if self._test_partial(torun, outfile):
+				self.accepting_partial = brchsk
 				return brchsk
 
 class Synthesis(object):
@@ -61,12 +68,12 @@ class Synthesis(object):
 		self._synlen = 5
 		self.testpath = sigtr['testpath']
 		self._construct_components()
-		self.print_comps()
+		# self.print_comps()
 		self.enum_counter = itertools.count(0)
+		self.brch_counter = itertools.count(1)
 
 		# attributes allowed to be changed
 		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
-
 		self.start_marking = self.targetfunc.get_start_marking() 
 		self.end_marking = self.targetfunc.get_end_marking()
 	def _construct_components(self):
@@ -82,7 +89,6 @@ class Synthesis(object):
 	def _build_graph(self, sg):
 		'''wrapper for building a graph'''
 		start = time.clock()
-		# ...(disable) recursive component
 		sg.build()
 		print('state graph(' + str(len(sg)) + ' states) build time:', time.clock() - start)
 	def setup(self):
@@ -94,10 +100,13 @@ class Synthesis(object):
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
 
-	def _branch_out(self, brch):
+	def _branch_out(self, brchlist, brch):
 		'''create a new branch that does the subtask of synthesis
 		(a branch of pattern matching) '''
-		return SynBranch(self, brch)
+		newbrch_id = next(self.brch_counter)
+		newbrch = SynBranch(self, brch, brchlist, brch)
+		brchlist.append(newbrch)
+		return newbrch
 	def start(self, enab_brch=True):
 		'''interface for outside'''
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
@@ -146,9 +155,10 @@ class Synthesis(object):
 			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)]))
 			combined = [self.targetfunc.sketch()] # not good
 			combined.append(branchings[0].matchline)
+			synbrchs = []
 			for b in branchings:
-				subsyn = self._branch_out(b)
-				partial_sketch = subsyn.accepting_partial()
+				self._branch_out(synbrchs, b)
+				partial_sketch = synbrchs[-1].get_accepting_partial()
 				if partial_sketch is None:
 					combined = None
 					break
@@ -210,8 +220,12 @@ class Synthesis(object):
 		for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen):
 			if rec_funcname is not None and rec_funcname in seq:
 				continue
-			print(seq)
-			yield self._gen_sketch(seq, firstline)
+			try:
+				sketch = self._gen_sketch(seq, firstline)
+				print(seq)
+				yield sketch
+			except ConstraintError:
+				pass # ignore sketches that cannot be concretize
 
 	def _gen_sketch(self, sequence, firstline):
 		'''create Sketch object for completion and SketchFormatter for output'''
@@ -244,7 +258,7 @@ class Synthesis(object):
 		return sk, SketchFormatter(lines)
 	def _confine_rec_holes(self):
 		'''make the constraints that '''
-
+		pass
 	def stat(self):
 		"""show statistics after synthesis"""
 		raise NotImplementedError('not yet implemented')
@@ -261,6 +275,8 @@ class Synthesis(object):
 		self.net.draw('draws/' + self.targetfunc.name + '.eps')
 	def draw_augmented_net(self):
 		assert self.stategraphs is not None
+		print('stategraphs[0] start:', self.stategraphs[0][0])
+		self.stategraphs[0].goto(0)
 		self.stategraphs[0].net.draw('draws/' + self.targetfunc.name + '_aug.eps')
 	def draw_state_graph(self):
 		self.stategraphs[0].draw('draws/' + self.targetfunc.name + '_sg.eps')
