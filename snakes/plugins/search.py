@@ -9,7 +9,6 @@ class searchError(Exception):
 		self.msg = msg
 	def __str__(self):
 		return repr('{0} -> {1}'.format(self.stateGraph.net.name, self.msg))
-
 class CannotReachErrorr(searchError):
 	def __init__(self, stateGraph):
 		super(CannotReachErrorr, self).__init__(stateGraph)
@@ -17,7 +16,7 @@ class CannotReachErrorr(searchError):
 		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
 			format(self.stateGraph.end_marking, self.stateGraph[0], self.stateGraph.net.name)
 		return repr(msg)
-		
+
 ################## Utility ##################
 def weight_of_arc(e):
 	assert isinstance(e, MultiArc)
@@ -98,7 +97,7 @@ def extend(module):
 			return graph
 
 	class StateGraph(module.StateGraph):
-		def __init__(self, net, start=None, end=None):
+		def __init__(self, net, start, end):
 			''' the according Petri net will be augmented by clone transitions and fire-restrictions '''
 			assert isinstance(start, Marking)
 			assert end is not None
@@ -109,20 +108,23 @@ def extend(module):
 			assert self[0] == start
 			self.end_marking = end
 			self._add_clones()
-			W = dict((place.name, place.max_out()) for place in self.net.place()) # the max outgoing weights for places
-			print('~~~ Maximum Outgoing Weight', W)
-			self.useful_places = self._useful_places() # find all places that can be backwards reachable from the end marking
-			print("~~~~~~~~~~~~~Useful places:", self.useful_places, "~~~~~~~~~~~~~")
 			
 			self.net.globals._env['this_net'] = self.net # let the net be evaluable in the local context itself, not safe
+			self._prepare_net()
+			self.steps_explored = 0 # indicate the how many times we have explore state in state graph
+			# print('----state graph created----')
+		def _prepare_net(self):
+			''' set guards for transition and take care of the special place "unit" '''
+			W = dict((place.name, place.max_out()) for place in self.net.place()) # the max outgoing weights for places
+			# print('~~~ Maximum Outgoing Weight', W)
+			self.useful_places = self._useful_places() # find all places that can be backwards reachable from the end marking
+			print("~~~~~~~~~~~~~Useful places:", self.useful_places, "~~~~~~~~~~~~~")
 			self._set_fire_restrictions(W, self.useful_places) # add guards for transition
 			# preventing generating tokens in unit place: remove all the ingoing edges to unit
 			# maybe not a good solution!!!
 			if self.net.has_place('unit'):
 				for tran in self.net.pre('unit'):
 					self.net.remove_output('unit', tran)
-			del W
-			# print('----state graph created----')
 		def _add_clones(self):
 			for place in self.net.place(): # clone transition for each type
 				t = place.name
@@ -163,6 +165,14 @@ def extend(module):
 				# if self._get_state(self.end_marking) in self._succ[state]:
 					return
 
+		def build_by_step(self):
+			''' explore new states from the todo list(frointer) '''
+			n = len(self._todo)
+			for _ in range(n):
+				state = self._todo.pop(0)
+				self._compute(state)
+			self.steps_explored += 1
+
 		def get_state(self, marking):
 			isinstance(marking, Marking)
 			return self._state[marking]
@@ -194,6 +204,7 @@ def extend(module):
 				sequence.append(edge[0].name)
 				yield from self._edge_enumerate_rec(sequence, path, pos + 1)
 				sequence.pop()
+
 		# 	try:
 		# 		next_diff = next(i for i in range(pos + 1, len(path)) if (path[i-1], path[i]) != arc)
 		# 	except StopIteration:
@@ -221,11 +232,16 @@ def extend(module):
 		# 			yield from self._edge_enum_helper(sequence, path, rep_start, next_diff-d, next_diff, candidate)
 		# 			sequence.pop()
 		# 		if pos > rep_start: candidate.add(edge)
-			
+		
+		def _prepare_graph(self, pathlen):
+			''' explore state graph until '''
+			while self.steps_explored < pathlen:
+				if len(self._todo) == 0:
+					return
+				self.build_by_step()
 		def _node2node_path(self, start_state, depth=float('inf')):
-			'''
-				search from the end using backtracking, implemented iteratively
-			'''
+			''' search from the end using backtracking, implemented iteratively '''
+			self._prepare_graph(depth-1)
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:
 				raise CannotReachErrorr(self)
@@ -280,5 +296,8 @@ def extend(module):
 				self.n2n_helper(route)
 				route.pop()
 		# for test
+
+		def num_states_exlore(self):
+			return len(self._done)
 
 	return Place, Transition, PetriNet, StateGraph

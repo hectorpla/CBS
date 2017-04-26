@@ -87,16 +87,14 @@ class Synthesis(object):
 		self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
 
 	def _build_graph(self, sg):
-		'''wrapper for building a graph'''
+		'''wrapper for building the complete reachability graph'''
 		start = time.clock()
 		sg.build()
 		print('state graph(' + str(len(sg)) + ' states) build time:', time.clock() - start)
 	def setup(self):
 		'''build up state graph according to the start'''
-		# assert self.start_marking == self.firstlineobj.get_start_marking()
 		self.stategraphs = [StateGraph(self.net, start=self.start_marking, end=self.end_marking)]
-		self._build_graph(self.stategraphs[0])
-		
+		# self._build_graph(self.stategraphs[0])		
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
 
@@ -112,9 +110,9 @@ class Synthesis(object):
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
 		for sketch in self.enum_concrete_sketch(self.targetfunc, id_cand, 
 					brchout=enab_brch, rec_funcname=self.targetfunc.name):
-			next(self.enum_counter)
 			if self._test(sketch, self.targetfunc.name):
-				print('SUCCEEDED!!! ' + str(next(self.enum_counter)) + ' sketches enumerated')
+				print('SUCCEEDED!!! ')
+				self.statistics()
 				return
 			print('FAILED')
 			if PAUSE:
@@ -143,6 +141,7 @@ class Synthesis(object):
 			formatter = SketchFormatter(sklines)
 			lines = formatter.format_out({0:para})
 			print_sketch(lines)
+			next(self.enum_counter)
 			yield lines
 	def enum_branch_sketch(self):
 		print('--- START OF BRANCH ENUMERATING ---')
@@ -200,6 +199,7 @@ class Synthesis(object):
 				print('--->')
 				concretelines = skformatter.format_out(concrtsk)
 				print_sketch(concretelines)
+				next(self.enum_counter)
 				yield concretelines
 			if brchout: print('- one seq ended -')
 
@@ -259,9 +259,15 @@ class Synthesis(object):
 	def _confine_rec_holes(self):
 		'''make the constraints that '''
 		pass
-	def stat(self):
+	def statistics(self):
 		"""show statistics after synthesis"""
-		raise NotImplementedError('not yet implemented')
+		print('|------------------------------------------------|')
+		print(str(next(self.enum_counter)) + ' sketches enumerated')
+		print('Number of states explored for each stategraph:')
+		for sg in self.stategraphs:
+			print(sg.num_states_exlore())
+		print('|------------------------------------------------|')
+
 	def print_comps(self):
 		comp_counter = itertools.count(0)
 		for c in self.comps:
