@@ -52,7 +52,7 @@ class SynBranch(object):
 
 class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
-	def __init__(self, parent=None, sigtr_file=None, enab_func_para=True):
+	def __init__(self, sigtr_file, func_scores=None, enab_func_para=True):
 		sigtr = parse_json(sigtr_file)
 		self.sigtr_dict = sigtr
 		self.targetfunc = TargetFunc(sigtr)
@@ -69,13 +69,17 @@ class Synthesis(object):
 		self.testpath = sigtr['testpath']
 		self._construct_components()
 		# self.print_comps()
+		self.sketch_counter = itertools.count(0)
 		self.enum_counter = itertools.count(0)
 		self.brch_counter = itertools.count(1)
+		self.syn_start_time = time.clock()
 
 		# attributes allowed to be changed
 		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
 		self.start_marking = self.targetfunc.get_start_marking() 
 		self.end_marking = self.targetfunc.get_end_marking()
+
+		self.priority_dict = parse_json(func_scores) if func_scores else None
 	def _construct_components(self):
 		'''establish component info'''
 		if self.comps is None:
@@ -193,13 +197,14 @@ class Synthesis(object):
 		for sk, skformatter in self._inc_len_sketch_enum(firstline, stmrk, rec_funcname):
 			print(' ~sketche with holes~ ')
 			print_sketch(skformatter.format_out())
+			next(self.sketch_counter)
 			# branch: recursive call restriction
 
 			for concrtsk in sk.enum_subst():
 				print('--->')
 				concretelines = skformatter.format_out(concrtsk)
 				print_sketch(concretelines)
-				next(self.enum_counter)
+				next(self.enum_counter) # count sketch
 				yield concretelines
 			if brchout: print('- one seq ended -')
 
@@ -217,7 +222,9 @@ class Synthesis(object):
 		yield from self._inc_enum(firstline, self.stategraphs[-1], stmrk, rec_funcname)
 	def _inc_enum(self, firstline, stategraph, start_marking, rec_funcname):
 		'''helper for _inc_len_sketch_enum()'''
-		for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen):
+				# call interface from the search plugin
+		for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen,
+				func_prio=self.priority_dict):
 			if rec_funcname is not None and rec_funcname in seq:
 				continue
 			try:
@@ -261,12 +268,14 @@ class Synthesis(object):
 		pass
 	def statistics(self):
 		"""show statistics after synthesis"""
-		print('|------------------------------------------------|')
-		print(str(next(self.enum_counter)) + ' sketches enumerated')
+		print('|---------------------- STATISTICS --------------------------|')
+		print('Synthesis Time(printing included):', time.clock() - self.syn_start_time)
+		print(next(self.sketch_counter), 'sketches enumerated')
+		print(next(self.enum_counter), 'concrete code snippets enumerated')
 		print('Number of states explored for each stategraph:')
 		for sg in self.stategraphs:
 			print(sg.num_states_exlore())
-		print('|------------------------------------------------|')
+		print('|------------------------------------------------------------|')
 
 	def print_comps(self):
 		comp_counter = itertools.count(0)

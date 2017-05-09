@@ -2,6 +2,7 @@ import snakes.plugins
 import snakes.nets
 from snakes.nets import *
 from collections import deque
+import heapq
 
 class searchError(Exception):
 	def __init__(self, stateGraph, msg=None):
@@ -177,13 +178,16 @@ def extend(module):
 			isinstance(marking, Marking)
 			return self._state[marking]
 
-		def enumerate_sketch_l(self, stmrk=None, max_depth=10):
-			"""yet another generator warpping another, called by synthesis to enumerate sketches incly"""
+		def enumerate_sketch_l(self, stmrk=None, max_depth=10, func_prio=None):
+			""" yet another generator warpping another, called by synthesis to enumerate sketches incly """
 			start_state = self.get_state(stmrk)
 			print('enumerate_sketch_l: start state -> ', start_state)
 			for length in range(2, max_depth+2):
 				print("^^^length", length)
-				yield from self.enumerate_sketch(start_state, length)
+				if func_prio is None:
+					yield from self.enumerate_sketch(start_state, length)
+				else:
+					yield from self._edge_enum_with_prio(start_state, length, func_prio)
 
 		def enumerate_sketch(self, start_state, depth=float('inf')): # bad pattern?: used internally and externally
 			"""list all possible transition paths from all state paths"""
@@ -204,34 +208,6 @@ def extend(module):
 				sequence.append(edge[0].name)
 				yield from self._edge_enumerate_rec(sequence, path, pos + 1)
 				sequence.pop()
-
-		# 	try:
-		# 		next_diff = next(i for i in range(pos + 1, len(path)) if (path[i-1], path[i]) != arc)
-		# 	except StopIteration:
-		# 		next_diff = len(path)
-		# 	candidate = self._succ[path[pos-1]][path[pos]].copy() # dynamically changing set
-		# 	# pool = list(candidate)
-		# 	yield from self._edge_enum_helper(sequence, path, pos, pos, next_diff, candidate)
-
-		# def _edge_enum_helper(self, sequence, path, rep_start, pos, next_diff, candidate):
-		# 	"""helper for _edge_enumerate_rec to prevent listing replicate paths"""
-		# 	if pos == next_diff:
-		# 		yield from self._edge_enumerate_rec(sequence, path, next_diff)
-		# 		return
-		# 	if len(candidate) == 0:
-		# 		return
-		# 	pool = list(candidate)
-		# 	repeat = next_diff - pos
-		# 	# print(sequence)
-		# 	for edge in pool:
-		# 		candidate.remove(edge)
-		# 		# if edge[0].name.startwith('clone_'): 
-		# 		# 	continue # don't let clone appended to the sequence
-		# 		sequence.extend([edge[0].name] * repeat) # tuple in entries: (transition, substitution)
-		# 		for d in range(0, repeat):
-		# 			yield from self._edge_enum_helper(sequence, path, rep_start, next_diff-d, next_diff, candidate)
-		# 			sequence.pop()
-		# 		if pos > rep_start: candidate.add(edge)
 		
 		def _prepare_graph(self, pathlen):
 			''' explore state graph until '''
@@ -264,13 +240,9 @@ def extend(module):
 					if target == start_state: # issue: 0 -> 0 self cycle for infinite depth case
 						path = route.copy()
 						path.reverse()
-						route.pop()
 						yield path
-						continue
-					if len(route) == depth:
-						# print('specified depth reached: {0}'.format(depth))
-						route.pop() #
-						continue
+					route.pop()
+					continue
 				if depth == float('inf'):
 					pred_list = [p for p in self._pred[target] if p not in route] # linear search
 				else:
@@ -296,6 +268,63 @@ def extend(module):
 				self.n2n_helper(route)
 				route.pop()
 		# for test
+
+		# sketch enum by ranking
+		def _all_edges_to(self, state):
+			''' return all in-coming edges from the state, paired with source state '''
+			ename = lambda t : t[0].name # extract edge name from a (transition, subsitution) tuple
+			res =  [(ename(edge), dest) for dest, edges in self._pred[state].items() for edge in edges]
+			return res
+		def _edge_enum_with_prio(self, start_state, max_depth, scores):
+			''' combine the node enum and edge enum phase, 
+				algo improvement: for mutiple edges, reachable paths should be stored '''
+			self._prepare_graph(max_depth-1)
+			end_state = self._get_state(self.end_marking)
+			if end_state == None:
+				raise CannotReachErrorr(self)
+			route = [end_state]
+			path = []
+			edge_stack = self._all_edges_to(end_state)
+			branch_stack = [len(edge_stack)]
+			paths = []
+			prio_stack = [1]
+			def do_pop():
+				route.pop()
+				path.pop()
+				prio_stack.pop()
+			def get_score(func_name):
+				temp = [""]
+				temp.extend(func_name.split('.'))
+				module, name = temp[-2], temp[-1]
+				try:
+					ret = scores[module][name]
+				except KeyError:
+					ret = 0.05
+				return ret
+			while len(edge_stack) > 0: # the core part of path enumeration
+				if branch_stack[-1] <= 0:
+					do_pop()
+					branch_stack.pop()
+					continue
+				edge, target = edge_stack.pop()
+				branch_stack[-1] -= 1
+				route.append(target)
+				path.append(edge)
+				fac = 1 / get_score(edge)
+				prio_stack.append(prio_stack[-1] * fac)
+				if len(route) == max_depth:
+					if target == start_state:
+						heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
+					do_pop()
+					continue
+				edge_list = self._all_edges_to(target)
+				edge_stack.extend(edge_list)
+				branch_stack.append(len(edge_list))
+
+			# print('# PATHS:', len(paths), '|', paths)
+			while len(paths) > 0: # yield sequences in by ranking
+				_, path = heapq.heappop(paths)
+				yield path
 
 		def num_states_exlore(self):
 			return len(self._done)
