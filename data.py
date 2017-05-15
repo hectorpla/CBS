@@ -197,6 +197,8 @@ class TargetFunc(Signature):
 	def id_func_variables(self):
 		'''only for function signature that returns one value'''
 		return self.params_of_type(self.rtypes[0])
+	def __str__(self):
+		return repr('TargetFunc: ' + self.name + str(list(self.variables())))
 
 trans_counter = itertools.count(0) # TEMPORALY
 class Component(Signature):
@@ -270,7 +272,8 @@ class SketchLine(object):
 		self._holes = holes # list of (hole#, type)
 		self._vars = variables # list of (var_name, type)
 	def __str__(self):
-		return '(holes: ' + str(self._holes) + ', vars: ' + str(self._vars) + ')'
+		return (self._comp.name if self._comp else '(none)') + '(holes: ' + str(self._holes) + \
+				 ', vars: ' + str(self._vars) + ')'
 	def holes(self):
 		return (hole for hole in self._holes)
 	def variables(self):
@@ -294,6 +297,7 @@ class Sketch(object):
 		self.s = z3.Solver()
 		self.hypos = {}
 		self.init_frame(sklines)
+		print('------', sklines)
 	def init_frame(self, sklines):
 		for skline in sklines:
 			self._add_line(skline)
@@ -410,8 +414,8 @@ class Sketch(object):
 		while True:
 			start = time.clock()
 			if z3.sat == self.s.check():
-				print('z3 solve time:', time.clock() - start)
-				print('  -----',end='')
+				# print('z3 solve time:', time.clock() - start)
+				# print('  -----',end='')
 				yield self._process_model()
 			else:
 				break

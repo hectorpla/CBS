@@ -182,15 +182,28 @@ def extend(module):
 			""" yet another generator warpping another, called by synthesis to enumerate sketches incly """
 			start_state = self.get_state(stmrk)
 			print('enumerate_sketch_l: start state -> ', start_state)
-			for length in range(2, max_depth+2):
-				print("^^^length", length)
-				if func_prio is None:
-					yield from self.enumerate_sketch(start_state, length)
-				else:
-					yield from self._edge_enum_with_prio(start_state, length, func_prio)
+			def enum(l):
+				return self.enumerate_sketch(start_state, l) if func_prio is None else\
+			 			self._edge_enum_with_prio(start_state, l, func_prio)
+			# length-increasing style
+			# for length in range(2, max_depth+2):
+			# 	print("^^^length", length)
+			# 	yield from enum(length)
 
-		def enumerate_sketch(self, start_state, depth=float('inf')): # bad pattern?: used internally and externally
-			"""list all possible transition paths from all state paths"""
+			# round-robin style
+			enumerators = deque([(l, enum(l)) for l in range(2, max_depth+2)]) 
+			while len(enumerators) > 0:
+				l, enumerator = enumerators.popleft()
+				print('^^^length', l)
+				for _ in range(100):
+					try:
+						yield next(enumerator)
+					except StopIteration:
+						continue
+					enumerators.append((l,enumerator))
+
+		def enumerate_sketch(self, start_state, depth=float('inf')):
+			""" list all possible transition paths from all state paths, given the # of steps(depth) """
 			for route in self._node2node_path(start_state, depth):
 				print('path: {0}'.format(route))
 				# print('marking:', list(map(lambda x: self[x], route)))
@@ -282,14 +295,13 @@ def extend(module):
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:
 				raise CannotReachErrorr(self)
-			route = [end_state]
+			# route = [end_state]
 			path = []
 			edge_stack = self._all_edges_to(end_state)
 			branch_stack = [len(edge_stack)]
 			paths = []
 			prio_stack = [1]
 			def do_pop():
-				route.pop()
 				path.pop()
 				prio_stack.pop()
 			def get_score(func_name):
@@ -308,11 +320,10 @@ def extend(module):
 					continue
 				edge, target = edge_stack.pop()
 				branch_stack[-1] -= 1
-				route.append(target)
 				path.append(edge)
 				fac = 1 / get_score(edge)
 				prio_stack.append(prio_stack[-1] * fac)
-				if len(route) == max_depth:
+				if len(path) == max_depth - 1:
 					if target == start_state:
 						heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
 					do_pop()
@@ -321,7 +332,7 @@ def extend(module):
 				edge_stack.extend(edge_list)
 				branch_stack.append(len(edge_list))
 
-			# print('# PATHS:', len(paths), '|', paths)
+			print('# PATHS:', len(paths), '|', paths)
 			while len(paths) > 0: # yield sequences in by ranking
 				_, path = heapq.heappop(paths)
 				yield path

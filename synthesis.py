@@ -22,10 +22,10 @@ class SynBranch(object):
 	def _enum_brch_sketch(self):
 		id_cand = self.brch.id_func_variables()
 		start = self.brch.start_marking
-		yield from self.synt.enum_concrete_sketch(self.brch, id_cand, start, brchout=False)
+		yield from self.synt.enum_concrete_code(self.brch, id_cand, start, brchout=False)
 		for substart in self.brch.enum_sub_start():
 			print('CHANGE START VAR: sub start marking:', substart)
-			brchsks = self.synt.enum_concrete_sketch(self.brch, [], substart, brchout=False)
+			brchsks = self.synt.enum_concrete_code(self.brch, [], substart, brchout=False)
 			yield from brchsks
 	def _make_runable(self, brchsk):
 		runablesketch = [self.synt.targetfunc.sketch()]
@@ -73,6 +73,7 @@ class Synthesis(object):
 		self.enum_counter = itertools.count(0)
 		self.brch_counter = itertools.count(1)
 		self.syn_start_time = time.clock()
+		self.sum_test_time = 0
 
 		# attributes allowed to be changed
 		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
@@ -91,14 +92,15 @@ class Synthesis(object):
 		self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
 
 	def _build_graph(self, sg):
-		'''wrapper for building the complete reachability graph'''
+		''' wrapper for building the complete reachability graph, 
+			DECREPATATED because no need construct whole reachability graph '''
 		start = time.clock()
 		sg.build()
 		print('state graph(' + str(len(sg)) + ' states) build time:', time.clock() - start)
 	def setup(self):
 		'''build up state graph according to the start'''
 		self.stategraphs = [StateGraph(self.net, start=self.start_marking, end=self.end_marking)]
-		# self._build_graph(self.stategraphs[0])		
+		# self._build_graph(self.stategraphs[0])
 	def set_syn_len(self, max_len):
 		self._synlen = max_len
 
@@ -112,16 +114,27 @@ class Synthesis(object):
 	def start(self, enab_brch=True):
 		'''interface for outside'''
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
-		for sketch in self.enum_concrete_sketch(self.targetfunc, id_cand, 
-					brchout=enab_brch, rec_funcname=self.targetfunc.name):
-			if self._test(sketch, self.targetfunc.name):
-				print('SUCCEEDED!!! ')
-				self.statistics()
-				return
-			print('FAILED')
-			if PAUSE:
-				input("PRESS ENTER TO CONTINUE.\n")
-		print('Failed...', str(next(self.enum_counter)) + ' sketches enumerated')
+		start_time = time.clock()
+		try:
+			for sketch in self.enum_concrete_code(self.targetfunc, id_cand, 
+						brchout=enab_brch, rec_funcname=self.targetfunc.name):
+				if self._test(sketch, self.targetfunc.name):
+					print('SUCCEEDED!!! ')
+					self.statistics()
+					return
+				test_time = time.clock() - start_time
+				print('Failed: Time to evaluate this proposal', test_time)
+				self.sum_test_time += test_time
+				if PAUSE:
+					input("PRESS ENTER TO CONTINUE.\n")
+				start_time = time.clock()
+		except KeyboardInterrupt:
+			print('Synthesis Interrupted')
+			self.statistics()
+			exit()
+		print('FAILED...')
+		self.statistics()
+
 	def _test(self, testsketch, outname):
 		'''compile/test the code against user-provided tests'''
 		outpath = 'out/' + outname + '.ml'
@@ -171,7 +184,7 @@ class Synthesis(object):
 				break
 			print('++++++Success in Brach Enumerating+++++++')
 			yield combined
-	def enum_concrete_sketch(self, firstline, id_varpool, stmrk=None, brchout=True, rec_funcname=None):
+	def enum_concrete_code(self, firstline, id_varpool, stmrk=None, brchout=True, rec_funcname=None):
 		''' 
 		enumerate completed sketch, called from Synthesis object that stands alone or allowed by synbranch
 		concrete sketch example:
@@ -194,7 +207,7 @@ class Synthesis(object):
 		print('--- START OF STRAIGHT ENUMERATING ---')
 		if stmrk is None:
 			stmrk = self.targetfunc.get_start_marking()
-		for sk, skformatter in self._inc_len_sketch_enum(firstline, stmrk, rec_funcname):
+		for sk, skformatter in self._enum_sketch(firstline, stmrk, rec_funcname):
 			print(' ~sketche with holes~ ')
 			print_sketch(skformatter.format_out())
 			next(self.sketch_counter)
@@ -208,34 +221,34 @@ class Synthesis(object):
 				yield concretelines
 			if brchout: print('- one seq ended -')
 
-	def _inc_len_sketch_enum(self, firstline, stmrk, rec_funcname):
-		'''enumerate non-complete sketches(with holes)'''
+	def _enum_sketch(self, firstline, stmrk, rec_funcname):
+		''' enumerate non-complete sketches(with holes), build stategraph if necessary '''
+		def enum(stategraph, start_marking):
+			''' helper for the outer function '''
+			# call interface from the search plugin
+			for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen,
+					func_prio=self.priority_dict):
+				if rec_funcname is not None and rec_funcname in seq:
+					continue
+				try:
+					sketch = self._gen_sketch(seq, firstline)
+					print(seq)
+					yield sketch
+				except ConstraintError:
+					pass # ignore sketches that cannot be concretize
+
 		for sg in self.stategraphs:
 			if stmrk in sg:
-				yield from self._inc_enum(firstline, sg, stmrk, rec_funcname)
-				return # stop yielding
-		# build a new state graph if neccessary
+				yield from enum(sg, stmrk)
+				return
 		print('<build new graph> new start:', stmrk)
 		# ???: in the new graph, endmark might not be reachable from startmark
 		self.stategraphs.append(StateGraph(self.net, start=stmrk, end=self.end_marking))
-		self._build_graph(self.stategraphs[-1])
-		yield from self._inc_enum(firstline, self.stategraphs[-1], stmrk, rec_funcname)
-	def _inc_enum(self, firstline, stategraph, start_marking, rec_funcname):
-		'''helper for _inc_len_sketch_enum()'''
-				# call interface from the search plugin
-		for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen,
-				func_prio=self.priority_dict):
-			if rec_funcname is not None and rec_funcname in seq:
-				continue
-			try:
-				sketch = self._gen_sketch(seq, firstline)
-				print(seq)
-				yield sketch
-			except ConstraintError:
-				pass # ignore sketches that cannot be concretize
+		yield from enum(self.stategraphs[-1], stmrk)
 
 	def _gen_sketch(self, sequence, firstline):
 		'''create Sketch object for completion and SketchFormatter for output'''
+		assert isinstance(sequence, list) # check the sequence
 		counter = itertools.count(0)
 		var_gen = var_generator()
 		lines = []
@@ -264,14 +277,16 @@ class Synthesis(object):
 			sk.add_rec_constraints(rec_holes, firstline)
 		return sk, SketchFormatter(lines)
 	def _confine_rec_holes(self):
-		'''make the constraints that '''
+		''' yet not defined '''
 		pass
 	def statistics(self):
 		"""show statistics after synthesis"""
 		print('|---------------------- STATISTICS --------------------------|')
 		print('Synthesis Time(printing included):', time.clock() - self.syn_start_time)
 		print(next(self.sketch_counter), 'sketches enumerated')
-		print(next(self.enum_counter), 'concrete code snippets enumerated')
+		num_concrete = next(self.enum_counter)
+		print(num_concrete, 'concrete code snippets enumerated')
+		print('Average enumeration time:', self.sum_test_time / num_concrete)
 		print('Number of states explored for each stategraph:')
 		for sg in self.stategraphs:
 			print(sg.num_states_exlore())
