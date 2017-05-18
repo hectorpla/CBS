@@ -1,0 +1,14 @@
+{
+	"name": "myFunc",
+	"paramNames": [
+		"arg0",
+	        "arg1"
+	],
+	"paramTypes": [
+		"string",
+	        "string"
+	],
+	"tgtTypes": "string",
+	"libdirs" : ["json/char", "json/bytes"],
+	"testpath" : "signatures/test3.ml" 
+}

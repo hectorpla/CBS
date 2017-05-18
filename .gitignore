@@ -99,3 +99,22 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# google drive Icon
+Icon?
+*.DS_Store
+
+# other files
+0
+"Icon\r"
+draws/
+gui/
+json/
+new_n2n_algo.py
+ocaml/
+out/
+parser_ocaml.zip
+py_practice/
+tags
+old_folder/
+

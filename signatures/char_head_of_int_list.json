@@ -1,0 +1,12 @@
+{
+	"name": "char_head_of_int_list",
+	"paramNames": [
+		"arg0", "arg1"
+	],
+	"paramTypes": [
+		"int list", "char"
+	],
+	"tgtTypes": "char",
+	"libdirs" : ["json/list", "json/char"],
+	"testpath" : "signatures/test13.ml" 
+}

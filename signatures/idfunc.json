@@ -1,0 +1,12 @@
+{
+	"name": "idFunc",
+	"paramNames": [
+		"arg0", "arg1"
+	],
+	"paramTypes": [
+		"char", "char"
+	],
+	"tgtTypes": "char",
+	"libdirs" : "json/char",
+	"testpath" : "signatures/test_id.ml" 
+}

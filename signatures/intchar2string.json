@@ -1,0 +1,14 @@
+{
+	"name": "make_string",
+	"paramNames": [
+		"arg0",
+	    "arg1"
+	],
+	"paramTypes": [
+		"int",
+	    "char"
+	],
+	"tgtTypes": "string",
+	"libdirs" : ["json/char", "json/string", "json/builtins"],
+	"testpath" : "signatures/test2.ml" 
+}

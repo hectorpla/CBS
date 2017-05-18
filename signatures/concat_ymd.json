@@ -1,0 +1,12 @@
+{
+	"name": "concat_ymd",
+	"paramNames": [
+		"arg0", "arg1", "arg2", "arg3"
+	],
+	"paramTypes": [
+		"char", "string", "string", "string"
+	],
+	"tgtTypes": "string",
+	"libdirs" : ["json/string", "json/char", "json/builtins"],
+	"testpath" : "signatures/test4.ml" 
+}

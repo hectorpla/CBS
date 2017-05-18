@@ -1,0 +1,12 @@
+{
+	"name": "set_char",
+	"paramNames": [
+		"arg0", "arg1", "arg2"
+	],
+	"paramTypes": [
+		"string", "char", "int"
+	],
+	"tgtTypes": "string",
+	"libdirs" : ["json/bytes"],
+	"testpath" : "signatures/test6.ml" 
+}

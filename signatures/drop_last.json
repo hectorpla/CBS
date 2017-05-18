@@ -1,0 +1,12 @@
+{
+	"name": "drop_last",
+	"paramNames": [
+		"arg0"
+	],
+	"paramTypes": [
+		"int list"
+	],
+	"tgtTypes": "int list",
+	"libdirs" : "json/list",
+	"testpath" : "signatures/test12.ml" 
+}

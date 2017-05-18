@@ -1,0 +1,12 @@
+{
+	"name": "stutter",
+	"paramNames": [
+		"arg0"
+	],
+	"paramTypes": [
+		"int list"
+	],
+	"tgtTypes": "int list",
+	"libdirs" : "json/list",
+	"testpath" : "signatures/test15.ml" 
+}

@@ -1,0 +1,12 @@
+{
+	"name": "to_string",
+	"paramNames": [
+		"arg0"
+	],
+	"paramTypes": [
+		"char"
+	],
+	"tgtTypes": "string",
+	"libdirs" : "json/char",
+	"testpath" : "signatures/test.ml" 
+}

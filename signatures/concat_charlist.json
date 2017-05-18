@@ -1,0 +1,12 @@
+{
+	"name": "concat_charlist",
+	"paramNames": [
+		"arg0"
+	],
+	"paramTypes": [
+		"char list"
+	],
+	"tgtTypes": "string",
+	"libdirs" : ["json/char", "json/builtins", "json/list"],
+	"testpath" : "signatures/test31.ml" 
+}

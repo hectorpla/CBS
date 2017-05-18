@@ -1,0 +1,12 @@
+{
+	"name": "concat_ym",
+	"paramNames": [
+		"arg0", "arg1", "arg2"
+	],
+	"paramTypes": [
+		"char", "string", "string"
+	],
+	"tgtTypes": "string",
+	"libdirs" : ["json/char", "json/builtins"],
+	"testpath" : "signatures/test5.ml" 
+}

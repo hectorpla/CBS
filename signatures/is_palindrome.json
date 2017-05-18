@@ -1,0 +1,12 @@
+{
+	"name": "is_palindrome",
+	"paramNames": [
+		"arg0"
+	],
+	"paramTypes": [
+		"int list"
+	],
+	"tgtTypes": "char",
+	"libdirs" : ["json/list", "json/char"],
+	"testpath" : "signatures/test14.ml" 
+}
