@@ -52,8 +52,9 @@ class SynBranch(object):
 
 class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
-	def __init__(self, sigtr_file, func_scores=None, enab_func_para=True):
-		sigtr = parse_json(sigtr_file)
+	def __init__(self, sigtr_dict=None, sigtr_file=None, func_scores=None, enab_func_para=False):
+		assert sigtr_dict or sigtr_file
+		sigtr = sigtr_dict if sigtr_dict else parse_json(sigtr_file)
 		self.sigtr_dict = sigtr
 		self.targetfunc = TargetFunc(sigtr)
 		if self.targetfunc is None:
@@ -116,12 +117,12 @@ class Synthesis(object):
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
 		start_time = time.clock()
 		try:
-			for sketch in self.enum_concrete_code(self.targetfunc, id_cand, 
+			for code_snippet in self.enum_concrete_code(self.targetfunc, id_cand, 
 						brchout=enab_brch, rec_funcname=self.targetfunc.name):
-				if self._test(sketch, self.targetfunc.name):
+				if self._test(code_snippet, self.targetfunc.name):
 					print('SUCCEEDED!!! ')
 					self.statistics()
-					return
+					return code_snippet
 				test_time = time.clock() - start_time
 				print('Failed: Time to evaluate this proposal', test_time)
 				self.sum_test_time += test_time
@@ -142,11 +143,11 @@ class Synthesis(object):
 		test_command = ['ocaml', outpath]
 		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
 		return b'true' == subproc.communicate()[0]
-	def _write_out(self, sketch, outpath):
-		'''write the completed sketch into a file'''
+	def _write_out(self, code_snippet, outpath):
+		'''write the completed code into a file'''
 		with open(outpath, 'w') as targetfile:
 			targetfile.write('exception Syn_exn\n\n')
-			for line in sketch:
+			for line in code_snippet:
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
