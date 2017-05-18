@@ -3,6 +3,7 @@ import snakes.nets
 from snakes.nets import *
 from collections import deque
 import heapq
+import time
 
 class searchError(Exception):
 	def __init__(self, stateGraph, msg=None):
@@ -199,7 +200,8 @@ def extend(module):
 					try:
 						yield next(enumerator)
 					except StopIteration:
-						continue
+						break
+				else:
 					enumerators.append((l,enumerator))
 
 		def enumerate_sketch(self, start_state, depth=float('inf')):
@@ -295,7 +297,6 @@ def extend(module):
 			end_state = self._get_state(self.end_marking)
 			if end_state == None:
 				raise CannotReachErrorr(self)
-			# route = [end_state]
 			path = []
 			edge_stack = self._all_edges_to(end_state)
 			branch_stack = [len(edge_stack)]
@@ -313,12 +314,20 @@ def extend(module):
 				except KeyError:
 					ret = 0.05
 				return ret
+			def yield_all_existing():
+				print('# PATHS:', len(paths), '|', paths)
+				while len(paths) > 0: # yield sequences in by ranking
+					_, path = heapq.heappop(paths)
+					yield path
+			timer = time.clock()
+			nodes_exp = 0
 			while len(edge_stack) > 0: # the core part of path enumeration
 				if branch_stack[-1] <= 0:
 					do_pop()
 					branch_stack.pop()
 					continue
 				edge, target = edge_stack.pop()
+				nodes_exp += 1
 				branch_stack[-1] -= 1
 				path.append(edge)
 				fac = 1 / get_score(edge)
@@ -326,16 +335,19 @@ def extend(module):
 				if len(path) == max_depth - 1:
 					if target == start_state:
 						heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
+						print('{0}...\t\tnodes explored: {1}\t\t{2:.6g}s ellapsed'.format(len(paths), 
+							nodes_exp, time.clock() - timer))
+						timer = time.clock()
+						nodes_exp = 0
+						if len(paths) >= 100: # tentative
+							yield from yield_all_existing()
 					do_pop()
 					continue
 				edge_list = self._all_edges_to(target)
 				edge_stack.extend(edge_list)
 				branch_stack.append(len(edge_list))
 
-			print('# PATHS:', len(paths), '|', paths)
-			while len(paths) > 0: # yield sequences in by ranking
-				_, path = heapq.heappop(paths)
-				yield path
+			yield from yield_all_existing()
 
 		def num_states_exlore(self):
 			return len(self._done)

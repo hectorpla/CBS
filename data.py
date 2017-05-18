@@ -296,13 +296,17 @@ class Sketch(object):
 		self.hole_vars = {} # each bucket contains variables
 		self.s = z3.Solver()
 		self.hypos = {}
+		# print(sklines)
+		self.unit_used = False
+		self.args = sklines[0].paras_list()
+		self.last_var = next(sklines[-2].variables())[0] # the first var of the second last line
 		self.init_frame(sklines)
-		print('------', sklines)
 	def init_frame(self, sklines):
 		for skline in sklines:
 			self._add_line(skline)
 		self._add_var_cands() # good to put here
 		self._set_up_constraints()
+
 	def _vars(self):
 		for typing in self.type_vars:
 			for var in self.type_vars[typing]:
@@ -324,6 +328,7 @@ class Sketch(object):
 			self.type_holes[typing].add(hole)
 		for var, typing in line.variables():
 			if not (var[0].isalpha()): # be careful
+				self.unit_used = True
 				continue # don't add _(unit into the variable list)
 			if typing not in self.type_vars:
 				self.type_vars[typing] = set()
@@ -368,6 +373,9 @@ class Sketch(object):
 			self._exact_one_constraint(vcandlist)
 		self._set_var_constraints()
 
+		if not self.unit_used: # temporaly
+			self._set_other_constraints()
+
 	def _exact_one_constraint(self, hs):
 		''' exactly one of hs is true '''
 		assert isinstance(hs, list)
@@ -381,6 +389,13 @@ class Sketch(object):
 				print('VAR CONSTRAINTS LIST ' + str(hcandlist))
 			self.s.add(z3.AtLeast(hcandlist + [1]))
 	
+	def _set_other_constraints(self):
+		''' constraints that lessen the sketch:code ratio '''
+		last_hole, last_var = len(self.hole_vars) - 1, self.last_var
+		self.s.add(self.hypos[last_hole][last_var])
+		hs = [self.hypos[last_hole][arg] for arg in self.args if arg in self.hypos[last_hole]]
+		self.s.add(z3.Not(z3.Or(hs)))
+
 	def _process_model(self):
 		m = self.s.model()
 		block = []
