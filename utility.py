@@ -1,5 +1,4 @@
 from os import listdir
-# from data import *
 import json
 import itertools
 import re

@@ -5,7 +5,8 @@ class SketchFormatter(object):
 		self.rec_fuc = rec_fuc
 	def format_out(self, subst=None):
 		sk = []
-		sk.append(self._lines[0].sketch(rec=self.rec_fuc))
+		firstlinesk = self._lines[0].sketch()
+		sk.append(firstlinesk)
 		for skline in self._lines[1:-1]:
 			toprint = skline.sketch(subst)
 			sk.append('\t' + toprint + ' in')
