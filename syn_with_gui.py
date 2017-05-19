@@ -40,38 +40,38 @@ class App(Frame):
 		# input entries
 		name_label = Label(self.left_input_sub_panel, text='Function name:')
 		name_label.grid(row=0, column=0)
-		self.name_entry = Entry(self.left_input_sub_panel, text='Please input name of the function')
+		self.name_entry = Entry(self.left_input_sub_panel, text='Please input name of the function:')
 		self.name_entry.grid(row=0, column=1)
 		
-		para_label = Label(self.left_input_sub_panel, text='Function parameters(separated by ";")')
+		para_label = Label(self.left_input_sub_panel, text='Function parameters(separated by ";"):')
 		para_label.grid(row=1, column=0)
 		self.para_entry = Entry(self.left_input_sub_panel, text='', width=30)
 		self.para_entry.grid(row=1, column=1)
 
-		para_type_label = Label(self.left_input_sub_panel, text='Parameter types (separated by ";")')
+		para_type_label = Label(self.left_input_sub_panel, text='Parameter types (separated by ";"):')
 		para_type_label.grid(row=2, column=0)
 		self.para_type_entry = Entry(self.left_input_sub_panel, text='', width=30)
 		self.para_type_entry.grid(row=2, column=1)
 
-		return_type_label = Label(self.left_input_sub_panel, text='Return type')
+		return_type_label = Label(self.left_input_sub_panel, text='Return type:')
 		return_type_label.grid(row=3, column=0)
 		self.return_type_entry = Entry(self.left_input_sub_panel)
 		self.return_type_entry.grid(row=3, column=1)
 
-		libs_label = Label(self.left_input_sub_panel, text='Libraries(separated by ";")')
+		libs_label = Label(self.left_input_sub_panel, text='Libraries(separated by ";"):')
 		libs_label.grid(row=4, column=0)
 		self.libs_entry = Entry(self.left_input_sub_panel, width=30)
 		self.libs_entry.grid(row=4, column=1)
 
 	def create_right_panel(self):
-		self.rightframe = Frame(self, width=300, height=400)
+		self.rightframe = Frame(self, width=380, height=550)
 		self.rightframe.pack(side='right')
 		self.rightframe.pack_propagate(0)
 
 		self.testframe = LabelFrame(self.rightframe, text='Test Cases', width=30, height=500)
 		self.testframe.pack()
 
-		test_example = Label(self.testframe, text='stutter [1;2] [] = [1;1;2;2]')
+		test_example = Label(self.testframe, text='stutter [1;2] = [1;1;2;2]')
 		# test_example.grid(row=0, column=0)
 		test_example.pack(side='top')
 
@@ -79,7 +79,7 @@ class App(Frame):
 			if self.active_tests < len(self.test_entries):
 				self.test_entries[self.active_tests][0].pack(side='top')
 			elif self.active_tests < 10:
-				self.test_entries.append((Entry(self.testframe, width=250), StringVar()))
+				self.test_entries.append((Entry(self.testframe, width=300), StringVar()))
 				ent, content = self.test_entries[-1]
 				ent['textvariable'] = content
 				content.set('test ' + str(len(self.test_entries)))
@@ -96,6 +96,7 @@ class App(Frame):
 			self.test_entries[self.active_tests-1][0].pack_forget()
 			self.active_tests -= 1
 
+		# button groups
 		self.add_button = Button(self.rightframe, text='Add test', command=add_test)
 		self.add_button.pack(side='bottom')
 		self.delete_button = Button(self.rightframe, text='Delete test', command=delete_test)
@@ -107,10 +108,10 @@ class App(Frame):
 		self.syn_button.pack(side='bottom')
 		
 		set_len_frame = Frame(self.rightframe)
-		set_len_frame.pack()
+		set_len_frame.pack(side='bottom')
 		set_len_label = Label(set_len_frame, text='Program length')
 		set_len_label.grid(row=0, column=0)
-		self.set_len_entry = Entry()
+		self.set_len_entry = Entry(set_len_frame, width=3)
 		self.set_len_entry.grid(row=0, column=1)
 		def set_len():
 			try:
@@ -119,6 +120,30 @@ class App(Frame):
 				pass
 		set_len_button = Button(set_len_frame, text='Set length', command=set_len)
 		set_len_button.grid(row=0, column=2)
+
+		importframe = Frame(self.rightframe)
+		importframe.pack(side='bottom')
+		import_entry = Entry(importframe)
+		import_entry.grid(row=0, column=0)
+		def import_json():
+			def set_text(ent, text):
+				ent.delete(0, END)
+				ent.insert(0, text)
+			try:
+				filename = import_entry.get()
+				sigtr = parse_json('signatures/' + filename)
+				list2string = lambda lst : '; '.join(lst)
+				set_text(self.name_entry, sigtr['name'])
+				set_text(self.para_entry, list2string(sigtr['paramNames']))
+				set_text(self.para_type_entry, list2string(sigtr['paramTypes']))
+				set_text(self.return_type_entry, sigtr['tgtTypes'])
+				set_text(self.libs_entry, 
+					list2string(sigtr['libdirs']) if isinstance(sigtr['libdirs'], list) else sigtr['libdirs'])
+			except Exception as e:
+				print(e)
+		import_button = Button(importframe, text='Import json file', command=import_json)
+		import_button.grid(row=0, column=1)
+
 
 	def start_synthesis(self):
 		self.sigtr_dict = {}
@@ -136,13 +161,14 @@ class App(Frame):
 				raise FiledError()
 			if len(self.sigtr_dict['paramNames']) != len(self.sigtr_dict['paramTypes']):
 				self.errmsg.set('Lengths of parameters and types do not agree')
-				return FiledError()
+				raise FiledError()
 		try:
 			read_sigt_info()
 		except FiledError:
 			return
 		folder = 'test'
 		test_file = folder + '/' + self.sigtr_dict['name'] + '.ml'
+
 		def write_test():
 			try:
 				mkdir(folder)
@@ -165,7 +191,11 @@ class App(Frame):
 		synt = Synthesis(sigtr_dict=self.sigtr_dict, func_scores=score)
 		synt.setup()
 		synt.set_syn_len(self.syn_len)
-		solution = synt.start()
+		try:
+			solution = synt.start()
+		except snakes.plugins.search.CannotReachErrorr as cre:
+			self.errmsg.set(cre)
+			return
 		if solution:
 			self.codeview.delete(1.0, END)
 			for line in solution:

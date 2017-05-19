@@ -202,9 +202,9 @@ class Synthesis(object):
 				yield from self.enum_branch_sketch()
 				print('--- END OF BRANCH ENUMERATING ---')
 			except snakes.plugins.search.CannotReachErrorr as cre:
-				print('///////')
+				print('///////', end='')
 				print(cre)
-				exit()
+				# exit()
 		print('--- START OF STRAIGHT ENUMERATING ---')
 		if stmrk is None:
 			stmrk = self.targetfunc.get_start_marking()
