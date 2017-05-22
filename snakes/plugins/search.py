@@ -179,13 +179,14 @@ def extend(module):
 			isinstance(marking, Marking)
 			return self._state[marking]
 
-		def enumerate_sketch_l(self, stmrk=None, max_depth=10, func_prio=None):
+		def enumerate_sketch_l(self, stmrk=None, endmrk=None, max_depth=10, func_prio=None):
 			""" yet another generator warpping another, called by synthesis to enumerate sketches incly """
 			start_state = self.get_state(stmrk)
-			print('enumerate_sketch_l: start state -> ', start_state)
+			end_state = endmrk if endmrk else self._get_state(self.end_marking)
+			# print('enumerate_sketch_l: start state -> {0}, end state -> {1}'.format(start_state, end_state))
 			def enum(l):
-				return self.enumerate_sketch(start_state, l) if func_prio is None else\
-			 			self._edge_enum_with_prio(start_state, l, func_prio)
+				return self.enumerate_sketch(start_state=start_state, end_state=end_state, depth=l) if func_prio is None else\
+			 			self._edge_enum_with_prio(start_state=start_state, end_state=end_state, max_depth=l, scores=func_prio)
 			# length-increasing style
 			# for length in range(2, max_depth+2):
 			# 	print("^^^length", length)
@@ -230,10 +231,9 @@ def extend(module):
 				if len(self._todo) == 0:
 					return
 				self.build_by_step()
-		def _node2node_path(self, start_state, depth=float('inf')):
+		def _node2node_path(self, start_state, end_state, depth=float('inf')):
 			''' search from the end using backtracking, implemented iteratively '''
 			self._prepare_graph(depth-1)
-			end_state = self._get_state(self.end_marking)
 			if end_state == None:
 				raise CannotReachErrorr(self)
 			route = [] # the current backwards route
@@ -290,11 +290,12 @@ def extend(module):
 			ename = lambda t : t[0].name # extract edge name from a (transition, subsitution) tuple
 			res =  [(ename(edge), dest) for dest, edges in self._pred[state].items() for edge in edges]
 			return res
-		def _edge_enum_with_prio(self, start_state, max_depth, scores):
+		def _edge_enum_with_prio(self, start_state, end_state, max_depth, scores):
 			''' combine the node enum and edge enum phase, 
-				algo improvement: for mutiple edges, reachable paths should be stored '''
-			self._prepare_graph(max_depth-1)
-			end_state = self._get_state(self.end_marking)
+				algo improvement: for mutiple edges, reachable paths should be stored 
+			'''
+			self._prepare_graph(max_depth-1) # prepare the graph first and check reachability
+			end_state = end_state if end_state else self._get_state(self.end_marking)
 			if end_state == None:
 				raise CannotReachErrorr(self)
 			path = []
@@ -317,7 +318,7 @@ def extend(module):
 			def yield_all_existing():
 				print('# PATHS:', len(paths), '|', paths)
 				while len(paths) > 0: # yield sequences in by ranking
-					_, path = heapq.heappop(paths)
+					score, path = heapq.heappop(paths)
 					yield path
 			timer = time.clock()
 			nodes_exp = 0

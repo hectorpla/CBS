@@ -6,9 +6,9 @@ class SynBranch(object):
 		be careful: a synbracn composes a synthesis, so when doing synthesis-related things,
 		refer to the synt member
 	'''
-	def __init__(self, synthesis, brch, collection, sb_id):
-		assert synthesis.stategraphs is not None
-		self.synt = synthesis # copy.copy(synthesis) # is copy good enough?
+	def __init__(self, parent_synthesis, brch, collection, sb_id):
+		assert parent_synthesis.stategraphs is not None
+		self.synt = parent_synthesis # compose the original synthesis(do so because different branches share the same end)
 		self.brch = brch
 		self.sb_collection = collection
 		self.sb_id = sb_id # the order this branch is in the synthesis
@@ -50,38 +50,59 @@ class SynBranch(object):
 				self.accepting_partial = brchsk
 				return brchsk
 
+subtask_counter = itertools.count(1) # TEMPORARY
+class SynPart(object):
+	def __init__(self, parent_synthesis, input_cands, retvar, mid_tests):
+		''' input_cands is a list of (var, type) pairs, and toreturn is a (var, type) 
+			test cases as ["let fun arg0 arg2 = <expected output>"; test2...]
+		'''
+		self.synt = parent_synthesis
+		self.name = self.synt.name + '_substask' + next(subtask_counter)
+		self.test = mid_tests
+	def _write_test(self):
+		try:
+			with open(self.name, 'w') as f:
+				for testline in self.test:
+					f.write(line + '\n')
+		except Exception as e:
+			print(e)
+			exit()
+	def get_subtask_code(self):
+		''' borrow the parent as a whole, access and modify the modify parent, bad idea! '''
+		self._write_test()
+		# TODO, get start and end marking
+		old_test = self.synt.testpath
+		self.synt.testpath = self.name + '.ml'
+		self.synt.subtask_sgs = [StateGraph(self.synt.net, start=start, end=end)]
+		self.synt.testpath = old_test
+
 class Synthesis(object):
 	"""An instance of this class conducts a systhesis task for a Target Signature"""
 	def __init__(self, sigtr_dict=None, sigtr_file=None, func_scores=None, enab_func_para=False):
 		assert sigtr_dict or sigtr_file
-		sigtr = sigtr_dict if sigtr_dict else parse_json(sigtr_file)
-		self.sigtr_dict = sigtr
-		self.targetfunc = TargetFunc(sigtr)
+		self.sigtr_dict = sigtr_dict if sigtr_dict else parse_json(sigtr_file)
+		self.targetfunc = TargetFunc(self.sigtr_dict)
 		if self.targetfunc is None:
 			raise parseError('format for the target function is incorrect')
-		self.net = PetriNet('NET for ' + sigtr['name'])
-		dirs = sigtr['libdirs']
-		if not isinstance(dirs, list): dirs = [dirs]
-		self.dirs = dirs
+		self.net = PetriNet('NET for ' + self.sigtr_dict['name'])
+		dirs = self.sigtr_dict['libdirs']
+		self.dirs = dirs if isinstance(dirs, list) else [dirs]
 		self.enab_func_para = enab_func_para
 		self.comps = None
 		self.stategraphs = None
+		self.subtask_sgs = None # state graphs for subgraphs
 		self._synlen = 5
-		self.testpath = sigtr['testpath']
+		self.testpath = self.sigtr_dict['testpath']
 		self._construct_components()
+		self.priority_dict = parse_json(func_scores) if func_scores else None
 		# self.print_comps()
-		self.sketch_counter = itertools.count(0)
-		self.enum_counter = itertools.count(0)
-		self.brch_counter = itertools.count(1)
-		self.syn_start_time = time.clock()
-		self.sum_test_time = 0
 
 		# attributes allowed to be changed
 		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
 		self.start_marking = self.targetfunc.get_start_marking() 
 		self.end_marking = self.targetfunc.get_end_marking()
 
-		self.priority_dict = parse_json(func_scores) if func_scores else None
+		self.init_stats()
 	def _construct_components(self):
 		'''establish component info'''
 		if self.comps is None:
@@ -92,6 +113,12 @@ class Synthesis(object):
 		self.sigtr_dict['module'] = ''
 		self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
 
+	def init_stats(self):
+		self.sketch_counter = itertools.count(0)
+		self.enum_counter = itertools.count(0)
+		self.brch_counter = itertools.count(1)
+		self.syn_start_time = time.clock()
+		self.sum_test_time = 0
 	def _build_graph(self, sg):
 		''' wrapper for building the complete reachability graph, 
 			DECREPATATED because no need construct whole reachability graph '''
@@ -103,15 +130,19 @@ class Synthesis(object):
 		self.stategraphs = [StateGraph(self.net, start=self.start_marking, end=self.end_marking)]
 		# self._build_graph(self.stategraphs[0])
 	def set_syn_len(self, max_len):
-		self._synlen = max_len
+		self._synlen = max_len		
 
 	def _branch_out(self, brchlist, brch):
 		'''create a new branch that does the subtask of synthesis
-		(a branch of pattern matching) '''
+			(a branch of pattern matching) '''
 		newbrch_id = next(self.brch_counter)
 		newbrch = SynBranch(self, brch, brchlist, brch)
 		brchlist.append(newbrch)
 		return newbrch
+	
+	def subtask(self):
+		''' create  '''
+
 	def start(self, enab_brch=True):
 		'''interface for outside'''
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
@@ -135,7 +166,6 @@ class Synthesis(object):
 			exit()
 		print('FAILED...')
 		self.statistics()
-
 	def _test(self, testsketch, outname):
 		'''compile/test the code against user-provided tests'''
 		outpath = 'out/' + outname + '.ml'
@@ -151,7 +181,7 @@ class Synthesis(object):
 				targetfile.write(line + '\n')
 			with open(self.testpath) as test:
 				targetfile.write(test.read())
-	def id_sketches(self, firstline, varpool):
+	def id_codes(self, firstline, varpool):
 		'''yield functions that return one of the parameters(in signature or branch)'''
 		for para in varpool:
 			sklines = [firstline]
@@ -161,18 +191,18 @@ class Synthesis(object):
 			print_sketch(lines)
 			next(self.enum_counter)
 			yield lines
-	def enum_branch_sketch(self):
+	def enum_branched_codes(self):
 		print('--- START OF BRANCH ENUMERATING ---')
 		list_args = self.targetfunc.paras_of_list_type()
 		for arg, t in list_args:
-			# assume t as a string has the formate: ? list
+			# assume t as a string has the formate: 'a list
 			elemtype, _ = t.split(' ')
 			branchings = []
 			branchings.append(Branch(self.targetfunc, (arg, t), []))
 			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)]))
-			combined = [self.targetfunc.sketch()] # not good
+			combined = [self.targetfunc.sketch()] # not good?
 			combined.append(branchings[0].matchline)
-			synbrchs = []
+			synbrchs = [] # life span: only lives in the branch enumeration phrase (may cause problem, maybe a good idea)
 			for b in branchings:
 				self._branch_out(synbrchs, b)
 				partial_sketch = synbrchs[-1].get_accepting_partial()
@@ -194,21 +224,22 @@ class Synthesis(object):
 					let v0 = Char.uppercase_ascii arg1 in # (sequence determined by strmk)
 					let v1 = String.make arg0 v0 in
 					v1 # variable with target type
+
+		strategy: check id function first; then if possible, try branch before straight-line code
 		'''
-		yield from self.id_sketches(firstline, id_varpool)
+		yield from self.id_codes(firstline, id_varpool)
 		print('--- END OF ID SKETCH ---')
 		if brchout:
 			try:
-				yield from self.enum_branch_sketch()
+				yield from self.enum_branched_codes()
 				print('--- END OF BRANCH ENUMERATING ---')
-			except snakes.plugins.search.CannotReachErrorr as cre:
-				print('///////', end='')
-				print(cre)
+			except snakes.plugins.search.CannotReachErrorr as cre: # TODO: make it look better
+				print('/////////////////' + str(cre) + '\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\')
 				# exit()
 		print('--- START OF STRAIGHT ENUMERATING ---')
 		if stmrk is None:
 			stmrk = self.targetfunc.get_start_marking()
-		for sk, skformatter in self._enum_sketch(firstline, stmrk, rec_funcname):
+		for sk, skformatter in self.enum_straight_code(firstline, stmrk, rec_funcname):
 			print(' ~sketche with holes~ ')
 			print_sketch(skformatter.format_out())
 			next(self.sketch_counter)
@@ -221,14 +252,13 @@ class Synthesis(object):
 				next(self.enum_counter) # count sketch
 				yield concretelines
 			if brchout: print('- one seq ended -')
-
-	def _enum_sketch(self, firstline, stmrk, rec_funcname):
+	def enum_straight_code(self, firstline, stmrk, rec_funcname, endmrk=None):
 		''' enumerate non-complete sketches(with holes), build stategraph if necessary '''
-		def enum(stategraph, start_marking):
+		def enum(stategraph, start_marking, end_marking):
 			''' helper for the outer function '''
 			# call interface from the search plugin
-			for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, max_depth=self._synlen,
-					func_prio=self.priority_dict):
+			for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, endmrk=end_marking,
+					max_depth=self._synlen, func_prio=self.priority_dict):
 				if rec_funcname is not None and rec_funcname in seq:
 					continue
 				try:
@@ -236,16 +266,17 @@ class Synthesis(object):
 					print(seq)
 					yield sketch
 				except ConstraintError:
-					pass # ignore sketches that cannot be concretize
+					pass # ignore sketches that cannot be concretized
 
-		for sg in self.stategraphs:
+		graphpool = self.subtask_sgs if isinstance(firstline, SubFunc) else self.stategraphs
+		for sg in graphpool:
 			if stmrk in sg:
-				yield from enum(sg, stmrk)
+				yield from enum(sg, stmrk, endmrk)
 				return
 		print('<build new graph> new start:', stmrk)
-		# ???: in the new graph, endmark might not be reachable from startmark
-		self.stategraphs.append(StateGraph(self.net, start=stmrk, end=self.end_marking))
-		yield from enum(self.stategraphs[-1], stmrk)
+		# In the new graph, endmark might not be reachable from startmark <- exception will be thrown
+		graphpool.append(StateGraph(self.net, start=stmrk, end=self.end_marking))
+		yield from enum(graphpool[-1], stmrk)
 
 	def _gen_sketch(self, sequence, firstline):
 		'''create Sketch object for completion and SketchFormatter for output'''

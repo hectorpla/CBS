@@ -156,14 +156,10 @@ class Branch(IOWeightObject):
 class Signature(IOWeightObject):
 	"""A base class for Component and Target"""
 	def __init__(self, sigtr_dict):
-		self.name = sigtr_dict['name']
 		assert len(sigtr_dict['paramNames']) == len(sigtr_dict['paramTypes'])
-		# (key, value) -> (arg name, arg type)
-		self.paras = list(zip(sigtr_dict['paramNames'], sigtr_dict['paramTypes']))
-		if isinstance(sigtr_dict['tgtTypes'], list):
-			self.rtypes = sigtr_dict['tgtTypes'] # return types
-		else:
-			self.rtypes = [sigtr_dict['tgtTypes']]
+		self.name = sigtr_dict['name']
+		self.paras = list(zip(sigtr_dict['paramNames'], sigtr_dict['paramTypes'])) # to (arg name, arg type) list
+		self.rtypes = sigtr_dict['tgtTypes'] if isinstance(sigtr_dict['tgtTypes'], list) else [sigtr_dict['tgtTypes']]
 		self._in, self._out = self._in_weights(), self._out_weight()
 	def input_len(self):
 		return len(self.paras)
@@ -198,7 +194,20 @@ class TargetFunc(Signature):
 		'''only for function signature that returns one value'''
 		return self.params_of_type(self.rtypes[0])
 	def __str__(self):
-		return repr('TargetFunc: ' + self.name + str(list(self.variables())))
+		return repr('TargetFunc({0}): {1}'.format(self.name, self.paras))
+
+class SubFunc(TargetFunc):
+	""" The instance of this class might have both different input and output than 
+		the TargetFunc it originated from """
+	def __init__(self, name, paras, retvar):
+		# use super() or not, depends on what is passed in
+		self.name = name
+		self.paras = paras
+		self.rtypes = [retvar]
+	def id_func_variables(self):
+		return []
+	def __str__(self):
+		return repr('SubFunc({0}): {1} -> {2}'.format(self.name, self.paras, self.rtypes))
 
 trans_counter = itertools.count(0) # TEMPORALY
 class Component(Signature):
