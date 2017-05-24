@@ -160,6 +160,24 @@ def extend(module):
 					% (place_name, W[place_name]))
 				expr.globals.attach(self.net.globals)
 				trans.guard = expr
+		
+		def update_with_func(self, func_name):
+			''' Connect all possible state pairs that can be transformed by Transtion func '''
+			trans = self.net.transition(func)
+			current = self.current()			
+			for state in self._done: # should not use __iter__
+				self.goto(state)
+				mode = trans.modes()
+				assert len(mode) == 1
+				mode = mode[0]
+				self._fire(trans, mode) # copy from nets.py
+				new_marking = self.net.get_marking()
+				target = self._get_state(new_marking)
+				if target is None: # for a new state, should explore again?
+				    target = self._create_state(new_marking, state, trans, mode)
+				if state in self._marking:
+				    self._create_edge(state, target, (trans, mode))                
+			self.goto(current)
 
 		def build_until(self):
 			for state in self._build():
@@ -187,7 +205,7 @@ def extend(module):
 			# print('enumerate_sketch_l: start state -> {0}, end state -> {1}'.format(start_state, end_state))
 			def enum(l):
 				return self.enumerate_sketch(start_state=start_state, end_state=end_state, depth=l) if func_prio is None else\
-			 			self._edge_enum_with_prio(start_state=start_state, end_state=end_state, max_depth=l, scores=func_prio)
+			 		self._edge_enum_with_prio(start_state=start_state, end_state=end_state, max_depth=l, scores=func_prio)
 			# length-increasing style
 			# for length in range(2, max_depth+2):
 			# 	print("^^^length", length)
@@ -292,7 +310,7 @@ def extend(module):
 			ename = lambda t : t[0].name # extract edge name from a (transition, subsitution) tuple
 			res =  [(ename(edge), dest) for dest, edges in self._pred[state].items() for edge in edges]
 			return res
-		def _edge_enum_with_prio(self, start_state, end_state, max_depth, scores):
+		def _edge_enum_with_prio(self, start_state, end_state, max_depth, scores, threshold=100):
 			''' combine the node enum and edge enum phase, 
 				algo improvement: for mutiple edges, reachable paths should be stored 
 			'''
@@ -306,9 +324,8 @@ def extend(module):
 			branch_stack = [len(edge_stack)]
 			paths = []
 			prio_stack = [1]
-			def do_pop():
-				path.pop()
-				prio_stack.pop()
+			workspace = dict([('nodes_exp', 0), ('timer', time.clock())])
+			
 			def get_score(func_name):
 				temp = [""]
 				temp.extend(func_name.split('.'))
@@ -318,40 +335,58 @@ def extend(module):
 				except KeyError:
 					ret = 0.05
 				return ret
-			def yield_all_existing():
-				print('# PATHS:', len(paths), '|', paths)
-				while len(paths) > 0: # yield sequences in by ranking
-					score, path = heapq.heappop(paths)
-					yield path
-			timer = time.clock()
-			nodes_exp = 0
-			while len(edge_stack) > 0: # the core part of path enumeration
-				if branch_stack[-1] <= 0:
-					do_pop()
-					branch_stack.pop()
-					continue
+			def enum_append():
+				''' pop a choice from choice stack and append it into the working list
+					return the reached state
+				'''
 				edge, target = edge_stack.pop()
-				nodes_exp += 1
+				workspace['nodes_exp'] += 1
 				branch_stack[-1] -= 1
 				path.append(edge)
 				fac = 1 / get_score(edge)
 				prio_stack.append(prio_stack[-1] * fac)
-				if len(path) == max_depth - 1:
-					if target == start_state:
-						heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
-						print('{0}...\t\tnodes explored: {1}\t\t{2:.6g}s ellapsed'.format(len(paths), 
-							nodes_exp, time.clock() - timer))
-						timer = time.clock()
-						nodes_exp = 0
-						if len(paths) >= 100: # tentative
-							yield from yield_all_existing()
-					do_pop()
-					continue
+				return target
+			def enum_pop():
+				path.pop()
+				prio_stack.pop()
+			def extend_choice(target):
 				edge_list = self._all_edges_to(target)
 				edge_stack.extend(edge_list)
 				branch_stack.append(len(edge_list))
+			def yield_n_existing(n=float('inf')):
+				# print('# PATHS:', len(paths), '|', paths)
+				count = 0
+				while len(paths) > 0 and count < n: # yield sequences in by ranking
+					count += 1
+					score, path = heapq.heappop(paths)
+					yield path			
+			def answer_yielder():
+				''' deal with the enumeration strategy and provide side effect interface '''
+				heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
+				print('{0}...\t\tnodes explored: {1}\t\t{2:.6g}s ellapsed'.format(len(paths), 
+					workspace['nodes_exp'], time.clock() - workspace['timer']))
+				workspace['timer'] = time.clock()
+				workspace['nodes_exp'] = 0
+				if len(paths) >= threshold:
+					yield from yield_n_existing(threshold)
+			while len(edge_stack) > 0: # the core part of path enumeration
+				if branch_stack[-1] <= 0:
+					enum_pop()
+					branch_stack.pop()
+					continue
+				target = enum_append()
+				if len(path) == max_depth - 1:
+					if target == start_state: # one answer found
+						yield from answer_yielder()
+					enum_pop()
+					continue
+				extend_choice(target)
+			yield from yield_n_existing()
 
-			yield from yield_all_existing()
+
+		def explore_until_use_of_func(self, start_state, end_state, func_name):
+			''' only allow clone edges or func '''
+
 
 		def num_states_exlore(self):
 			return len(self._done)
