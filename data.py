@@ -199,11 +199,8 @@ class TargetFunc(Signature):
 class SubFunc(TargetFunc):
 	""" The instance of this class might have both different input and output than 
 		the TargetFunc it originated from """
-	def __init__(self, name, paras, retvar):
-		# use super() or not, depends on what is passed in
-		self.name = name
-		self.paras = paras
-		self.rtypes = [retvar]
+	def __init__(self, sub_dict):
+		super(SubFunc, self).__init__(sub_dict)
 	def id_func_variables(self):
 		return []
 	def __str__(self):

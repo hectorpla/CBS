@@ -1,8 +1,14 @@
 from tkinter import *
-from synthesis import *
+import synthesis
+import utility
+
 from os import mkdir
+import re
+import importlib
 
 class FiledError(Exception):
+	pass
+class SubFuncNotFound(Exception):
 	pass
 
 def decode_string(string):
@@ -19,17 +25,17 @@ class App(Frame):
 		super().__init__(master)
 		self.sigtr_dict = None
 		self.test_entries = []
-		self.active_tests = 0
-		self.max_active = 10
 		self.midtest_entries = []
-
-		self.midtestframe = None
+		self.active_tests = 0
+		self.max_active = 10		
 
 		self.pack()
 		self.create_left_panel()
 		self.create_right_panel()
+		self.midtestframe = None
 
 		# synthesis parameters
+		self.synt = None
 		self.syn_len = 6
 	def create_left_panel(self):
 		self.leftframe = Frame(self, width=500, height=600)
@@ -111,15 +117,17 @@ class App(Frame):
 			self.active_tests -= 1
 
 		# button groups
-		self.add_button = Button(self.rightframe, text='Add test', command=add_test)
-		self.add_button.pack(side='bottom')
-		self.delete_button = Button(self.rightframe, text='Delete test', command=delete_test)
-		self.delete_button.pack(side='bottom')
-		self.clear_button = Button(self.rightframe, text='Clear text', 
+		buttonframe1 = Frame(self.rightframe)
+		buttonframe1.pack(side='bottom')
+		self.add_button = Button(buttonframe1, text='Add test', command=add_test)
+		self.add_button.grid(row=0, column=0)
+		self.delete_button = Button(buttonframe1, text='Delete test', command=delete_test)
+		self.delete_button.grid(row=0, column=1)
+		self.clear_button = Button(buttonframe1, text='Clear text', 
 			command=lambda: self.codeview.delete(1.0, END))
-		self.clear_button.pack(side='bottom')
-		self.syn_button = Button(self.rightframe, text='Start synthesis', command=self.start_synthesis)
-		self.syn_button.pack(side='bottom')
+		self.clear_button.grid(row=1, column=1)
+		self.syn_button = Button(buttonframe1, text='Start synthesis', command=self.start_synthesis)
+		self.syn_button.grid(row=1, column=0)
 		
 		set_len_frame = Frame(self.rightframe)
 		set_len_frame.pack(side='bottom')
@@ -145,7 +153,7 @@ class App(Frame):
 				ent.insert(0, text)
 			try:
 				filename = import_entry.get()
-				sigtr = parse_json('signatures/' + filename)
+				sigtr = utility.parse_json('signatures/' + filename.strip())
 				list2string = lambda lst : '; '.join(lst)
 				set_text(self.name_entry, sigtr['name'])
 				set_text(self.para_entry, list2string(sigtr['paramNames']))
@@ -168,11 +176,20 @@ class App(Frame):
 		import_button = Button(importframe, text='Import json file', command=import_json)
 		import_button.grid(row=0, column=1)
 
-		midtest_button = Button(self.rightframe, text='Add middle tests', command=self.create_mid_test_panel)
-		midtest_button.pack(side='bottom')
+		synpart_frame = Frame(self.rightframe)
+		synpart_frame.pack(side='bottom')
+		midtest_button = Button(synpart_frame, text='Add middle tests', command=self.create_mid_test_panel)
+		midtest_button.grid(row=0, column=0)
+		syn_part_button = Button(synpart_frame, text='Syn Part', command=self.synthesize_nested_function)
+		syn_part_button.grid(row=0, column=1)
 
-		syn_part_button = Button(self.rightframe, text='Syn Part', command=self.synthesize_nested_function)
-		syn_part_button.pack(side='bottom')
+		def reload_syn():
+			''' for the convenience of test '''
+			importlib.reload(synthesis)
+			print('synthesis module reloaded')
+		reload_button = Button(self.rightframe, text='reload synthesis module(for test)',
+			command=reload_syn)
+		reload_button.pack(side='bottom')
 
 	def create_mid_test_panel(self):
 		if self.midtestframe:
@@ -180,7 +197,8 @@ class App(Frame):
 		self.midtestframe = LabelFrame(self, text='Middle tests', width=320, height=300)
 		self.midtestframe.pack(side='top')
 
-		examplelb = Label(self.midtestframe, text='Examples: 0; 2; "10/2"')
+		examplelb = Label(self.midtestframe, 
+			text='Examples: 0 * 2 -> string(sub-specification)\n"10/2"(middle result)')
 		examplelb.pack(side='top')
 
 		argspecframe = Frame(self.midtestframe)
@@ -211,74 +229,97 @@ class App(Frame):
 		if len(self.sigtr_dict['paramNames']) != len(self.sigtr_dict['paramTypes']):
 			self.errmsg.set('Lengths of parameters and types do not agree')
 			raise FiledError()
-
-
-
+	def read_test_info(self):
+		folder = 'test'
+		test_file = folder + '/' + self.sigtr_dict['name'] + '_test.ml'
+		try:
+			mkdir(folder)
+		except FileExistsError:
+			pass
+		with open(test_file, 'w') as f:
+			tests = (test_entry[1].get() for test_entry in self.test_entries[:self.active_tests])
+			utility.write_tests_tofile(tests, f)
+			self.sigtr_dict['testpath'] = test_file
 	def get_inputs(self, selector):	
-		selected = select_from_list(self.test_entries, selector)
+		selected = select_from_list(self.test_entries, selector) # select vertically
 		io_series = (e[0].get().split('=') for e in selected)
 		lhs, rhs = [], []
 		for l, _ in io_series:
-			lhs.append(list(map(decode_string, l.split()[1:]))) # BUG: space in string!!!
+			lhs.append(list(map(str.strip, l.split()[1:]))) # BUG: space in string!!!
 			# rhs.append(r.strip())
 		return lhs
 
 	def synthesize_nested_function(self):
-		if not self.sigtr_dict:
+		# be careful of inconsistency
+		if not self.sigtr_dict or self.name_entry.get() != self.sigtr_dict['name']:
 			self.read_sigt_info()
+			self.read_test_info()
+			if self.synt is None:
+				self.synt_setup()
 		try:
-			spec_args = list(map(lambda x:int(x.strip()), self.argspec_entry.get().split(';')))
-			midtest_inputs = [decode_string(e.get()) for e in self.midtest_entries]
+			# parse sub spec 
+			argspec, rtypespec = re.findall('(.*)->(.*)', self.argspec_entry.get())[0]
+			spec_args = list(map(lambda x:int(x.strip()), argspec.split('*')))
+			subrtype = rtypespec.strip()
+			# get effective middle tests
+			midtest_inputs = [e.get() for e in self.midtest_entries]
 			effective_list = [i for i in range(self.max_active) if midtest_inputs[i] != '']
+			# get selected from the effective ones
 			middle_results = list(select_from_list(midtest_inputs, effective_list))
-		except Exception as e:
+			selected_inputs = self.get_inputs(effective_list)
+			# select horizontally, list of list of subset of parameters
+			selected_argslist = [list(select_from_list(arglist, spec_args)) for arglist in selected_inputs]
+		except IndexError as e:
 			print(e)
 			return
-		selected_inputs = self.get_inputs(effective_list)
-		# select horizontally
-		selected_argslist = [list(select_from_list(arglist, spec_args)) for arglist in selected_inputs]
-		print(selected_argslist)
+		# print(selected_argslist)
+
+		# synthesis go		
+		def create_sub_dict():
+			sub_dict = {}
+			sub_dict['name'] = self.synt.name_of_syn_func() + '_sub'
+			sub_dict['paramNames'] = \
+				list(select_from_list(self.sigtr_dict['paramNames'], spec_args))
+			sub_dict['paramTypes'] = \
+				list(select_from_list(self.sigtr_dict['paramTypes'], spec_args))
+			sub_dict['tgtTypes'] = subrtype
+			return sub_dict
+		sub_dict = create_sub_dict()
+		middle_tests = zip(selected_argslist, middle_results)
+		# try:
+		sub_code = self.synt.syn_subtask(sub_dict, middle_tests)
+		if sub_code:
+			self.set_code(sub_code)
+		else:
+			raise SubFuncNotFound()
+
+	def synt_setup(self):
+		score = 'json/scores.json'
+		self.synt = synthesis.Synthesis(sigtr_dict=self.sigtr_dict, func_scores=score)
+		self.synt.setup()
+		self.synt.set_syn_len(self.syn_len)
 
 	def start_synthesis(self):
 		try:
 			self.read_sigt_info()
+			self.read_test_info()
 		except FiledError:
 			return
-		folder = 'test'
-		test_file = folder + '/' + self.sigtr_dict['name'] + '.ml'
-
-		def write_test():
-			try:
-				mkdir(folder)
-			except FileExistsError:
-				pass
-			with open(test_file, 'w') as f:
-				for i, test_entry in enumerate(self.test_entries[:self.active_tests]):
-					f.write('let test{0} = try('.format(i))
-					f.write(test_entry[1].get())
-					f.write(') with Syn_exn -> true\n')
-				f.write('let _ = print_string (string_of_bool ({0}))\n'.\
-					format(' && '.join(['test' + str(i) for i in range(self.active_tests)])))
-		def read_test_info():
-			write_test()
-			self.sigtr_dict['testpath'] = test_file
-		read_test_info()
-
 		self.errmsg.set('')
-		score = 'json/scores.json'
-		synt = Synthesis(sigtr_dict=self.sigtr_dict, func_scores=score)
-		synt.setup()
-		print('Program length:', self.syn_len)
-		synt.set_syn_len(self.syn_len)
+		self.synt_setup()
 		try:
-			solution = synt.start()
-		except snakes.plugins.search.CannotReachErrorr as cre:
+			solution = self.synt.start()
+		except synthesis.snakes.plugins.search.CannotReachErrorr as cre:
 			self.errmsg.set(cre)
 			return
 		if solution:
-			self.codeview.delete(1.0, END)
-			for line in solution:
-				self.codeview.insert(END, line + '\n')
+			self.set_code(solution)
+
+	def set_code(self, toshow):
+		self.codeview.delete(1.0, END)
+		for line in toshow:
+			self.codeview.insert(END, line + '\n')
+
 
 root = Tk('OCaml Program Synthesis')
 root.geometry("1100x600")

@@ -139,3 +139,12 @@ def has_func_para(types):
 		if '->' in t:
 			return True
 	return False
+
+# write test to file
+def write_tests_tofile(lines, f):
+	for test_num, test in enumerate(lines):
+		f.write('let test{0} = try('.format(test_num))
+		f.write(test)
+		f.write(') with Syn_exn -> true\n')
+	f.write('let _ = print_string (string_of_bool ({0}))\n'.\
+		format(' && '.join(['test' + str(i) for i in range(test_num+1)])))

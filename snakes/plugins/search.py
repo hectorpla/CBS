@@ -15,6 +15,7 @@ class CannotReachErrorr(searchError):
 	def __init__(self, stateGraph):
 		super(CannotReachErrorr, self).__init__(stateGraph)
 	def __str__(self):
+		# TODO: message no longer correct because the start and end marking can be changable
 		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
 			format(self.stateGraph.end_marking, self.stateGraph[0], self.stateGraph.net.name)
 		return repr(msg)
@@ -182,7 +183,7 @@ def extend(module):
 		def enumerate_sketch_l(self, stmrk=None, endmrk=None, max_depth=10, func_prio=None):
 			""" yet another generator warpping another, called by synthesis to enumerate sketches incly """
 			start_state = self.get_state(stmrk)
-			end_state = endmrk if endmrk else self._get_state(self.end_marking)
+			end_state = self._get_state(endmrk) if endmrk else self._get_state(self.end_marking)
 			# print('enumerate_sketch_l: start state -> {0}, end state -> {1}'.format(start_state, end_state))
 			def enum(l):
 				return self.enumerate_sketch(start_state=start_state, end_state=end_state, depth=l) if func_prio is None else\
@@ -202,18 +203,19 @@ def extend(module):
 						yield next(enumerator)
 					except StopIteration:
 						break
+					except CannotReachErrorr as cre:
+						print('//////////////' + str(cre) + '\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\')
+						break
 				else:
 					enumerators.append((l,enumerator))
 
 		def enumerate_sketch(self, start_state, depth=float('inf')):
 			""" list all possible transition paths from all state paths, given the # of steps(depth) """
+			# try: (should catch CannotReachError)
 			for route in self._node2node_path(start_state, depth):
 				print('path: {0}'.format(route))
-				# print('marking:', list(map(lambda x: self[x], route)))
 				for sequence in self._edge_enumerate_rec([], route, 1):
 					yield sequence
-
-		# give up to write an iterative one
 		def _edge_enumerate_rec(self, sequence, path, pos):
 			"""given a node path, return cross product of all steps"""
 			if pos == len(path):
@@ -234,7 +236,7 @@ def extend(module):
 		def _node2node_path(self, start_state, end_state, depth=float('inf')):
 			''' search from the end using backtracking, implemented iteratively '''
 			self._prepare_graph(depth-1)
-			if end_state == None:
+			if end_state is None:
 				raise CannotReachErrorr(self)
 			route = [] # the current backwards route
 			node_st = [] # stack for nodes
@@ -267,7 +269,7 @@ def extend(module):
 		# for test
 		def _node2node_path_rec(self):
 			end_state = self._get_state(self.end_marking)
-			if end_state == None:
+			if end_state is None:
 				raise CannotReachErrorr(self, self.end_marking)
 			self.n2n_helper([end_state])
 		def n2n_helper(self, route):
@@ -295,8 +297,9 @@ def extend(module):
 				algo improvement: for mutiple edges, reachable paths should be stored 
 			'''
 			self._prepare_graph(max_depth-1) # prepare the graph first and check reachability
+			# print('----------{0}-------------\n{1}\n--------------------'.format(self.steps_explored, self._marking))
 			end_state = end_state if end_state else self._get_state(self.end_marking)
-			if end_state == None:
+			if end_state is None:
 				raise CannotReachErrorr(self)
 			path = []
 			edge_stack = self._all_edges_to(end_state)
