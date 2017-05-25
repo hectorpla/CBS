@@ -19,7 +19,11 @@ class CannotReachErrorr(searchError):
 		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
 			format(self.stateGraph.end_marking, self.stateGraph[0], self.stateGraph.net.name)
 		return repr(msg)
-
+class BackTrackUtilError(Exception):
+	def __init__(self, msg):
+		self.msg = msg
+	def __str__(self):
+		return self.msg
 ################## Utility ##################
 def weight_of_arc(e):
 	assert isinstance(e, MultiArc)
@@ -311,21 +315,22 @@ def extend(module):
 			res =  [(ename(edge), dest) for dest, edges in self._pred[state].items() for edge in edges]
 			return res
 		def _edge_enum_with_prio(self, start_state, end_state, max_depth, scores, threshold=100):
-			''' combine the node enum and edge enum phase, 
+			''' 
+				combine the node enum and edge enum phase, 
 				algo improvement: for mutiple edges, reachable paths should be stored 
 			'''
-			self._prepare_graph(max_depth-1) # prepare the graph first and check reachability
-			# print('----------{0}-------------\n{1}\n--------------------'.format(self.steps_explored, self._marking))
-			end_state = end_state if end_state else self._get_state(self.end_marking)
-			if end_state is None:
-				raise CannotReachErrorr(self)
-			path = []
-			edge_stack = self._all_edges_to(end_state)
-			branch_stack = [len(edge_stack)]
-			paths = []
-			prio_stack = [1]
+			path, prio_stack, edge_stack, branch_stack, paths = [[] for _ in range(5)]
+			# alias		
 			workspace = dict([('nodes_exp', 0), ('timer', time.clock())])
-			
+			workspace['start_state'], workspace['end_state'] = start_state, end_state
+			workspace['worklists'] = [path, prio_stack]
+			workspace['choice_stack'] = edge_stack
+			workspace['branch_stack'] = branch_stack
+
+			def init():
+				prio_stack.extend([1])
+				edge_stack.extend(self._all_edges_to(workspace['end_state'])) # end_state to be modified later
+				branch_stack.extend([len(edge_stack)])
 			def get_score(func_name):
 				temp = [""]
 				temp.extend(func_name.split('.'))
@@ -349,10 +354,7 @@ def extend(module):
 			def enum_pop():
 				path.pop()
 				prio_stack.pop()
-			def extend_choice(target):
-				edge_list = self._all_edges_to(target)
-				edge_stack.extend(edge_list)
-				branch_stack.append(len(edge_list))
+			explore_operator = self._all_edges_to
 			def yield_n_existing(n=float('inf')):
 				# print('# PATHS:', len(paths), '|', paths)
 				count = 0
@@ -365,28 +367,56 @@ def extend(module):
 				heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
 				print('{0}...\t\tnodes explored: {1}\t\t{2:.6g}s ellapsed'.format(len(paths), 
 					workspace['nodes_exp'], time.clock() - workspace['timer']))
-				workspace['timer'] = time.clock()
-				workspace['nodes_exp'] = 0
+				workspace['timer'], workspace['nodes_exp'] = time.clock(), 0
 				if len(paths) >= threshold:
 					yield from yield_n_existing(threshold)
-			while len(edge_stack) > 0: # the core part of path enumeration
-				if branch_stack[-1] <= 0:
-					enum_pop()
-					branch_stack.pop()
-					continue
-				target = enum_append()
-				if len(path) == max_depth - 1:
-					if target == start_state: # one answer found
-						yield from answer_yielder()
-					enum_pop()
-					continue
-				extend_choice(target)
-			yield from yield_n_existing()
+			funset = dict([('init', init), ('enum_append', enum_append), ('answer_yielder', answer_yielder), 
+					('explore_operator', explore_operator), ('final_yielder', yield_n_existing)])
+			yield from self._general_bt(workspace, funset, max_depth)
 
+		def _general_bt(self, workspace, funset, max_depth):
+			''' 
+				abstracted iterative backtracking solution, parameters are set of functions
+				very vulnerable because of mixing different local environments
+				poor readability
+			'''
+			elems = ['worklists', 'choice_stack', 'branch_stack', 'start_state', 'end_state']
+			funs = ['init', 'enum_append', 'answer_yielder', 'explore_operator']
+			for e in elems:
+				if e not in workspace:
+					raise BackTrackUtilError(e + ' NEEDED to implement BT')
+			for f in funs:
+				if f not in funset:
+					raise BackTrackUtilError(f + ' NEEDED to implement BT')
+			self._prepare_graph(max_depth-1)
+			# print('----------{0}-------------\n{1}\n--------------------'.format(self.steps_explored, self._marking))
+			workspace['end_state'] = workspace['end_state'] if workspace['end_state'] else self._get_state(self.end_marking)
+			if workspace['end_state'] is None: 
+				raise CannotReachErrorr(self)
+			def enum_pop():
+				for wl in workspace['worklists']:
+					wl.pop()
+			funset['init'].__call__()
+			while len(workspace['choice_stack']) > 0:
+				if workspace['branch_stack'][-1] <= 0: # pop until the current node has positive branches
+					enum_pop()
+					workspace['branch_stack'].pop()
+					continue
+				target = funset['enum_append'].__call__()
+				if len(workspace['worklists'][0]) == max_depth - 1:
+					if target == workspace['start_state']:
+						yield from funset['answer_yielder'].__call__()
+					enum_pop()
+					continue
+				new_choices = funset['explore_operator'].__call__(target)
+				workspace['choice_stack'].extend(new_choices)
+				workspace['branch_stack'].append(len(new_choices))
+			if 'final_yielder' in funset:
+				yield from funset['final_yielder'].__call__()
 
 		def explore_until_use_of_func(self, start_state, end_state, func_name):
 			''' only allow clone edges or func '''
-
+			pass
 
 		def num_states_exlore(self):
 			return len(self._done)
