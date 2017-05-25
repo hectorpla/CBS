@@ -321,11 +321,11 @@ def extend(module):
 			'''
 			path, prio_stack, edge_stack, branch_stack, paths = [[] for _ in range(5)]
 			# alias		
-			workspace = dict([('nodes_exp', 0), ('timer', time.clock())])
+			nodes_exp, timer = 0, time.clock()
+			workspace = {}
 			workspace['start_state'], workspace['end_state'] = start_state, end_state
 			workspace['worklists'] = [path, prio_stack]
-			workspace['choice_stack'] = edge_stack
-			workspace['branch_stack'] = branch_stack
+			workspace['choice_stack'], workspace['branch_stack'] = edge_stack, branch_stack
 
 			def init():
 				prio_stack.extend([1])
@@ -340,21 +340,27 @@ def extend(module):
 				except KeyError:
 					ret = 0.05
 				return ret
-			def enum_append():
-				''' pop a choice from choice stack and append it into the working list
-					return the reached state
-				'''
+			def choice_pop():
+				''' pop a choice from choice stack and return (reached state, [elems to append in worklists]) '''
+				nonlocal nodes_exp
 				edge, target = edge_stack.pop()
-				workspace['nodes_exp'] += 1
-				branch_stack[-1] -= 1
-				path.append(edge)
+				nodes_exp += 1
 				fac = 1 / get_score(edge)
-				prio_stack.append(prio_stack[-1] * fac)
+				prio = prio_stack[-1] * fac
+				return target, [edge, prio]
+			def enum_append():
+				''' append the result of choice_pop into the working list; return the reached state '''
+				branch_stack[-1] -= 1
+				target, (edge, prio) = choice_pop()
+				path.append(edge)
+				prio_stack.append(prio)
 				return target
 			def enum_pop():
 				path.pop()
 				prio_stack.pop()
 			explore_operator = self._all_edges_to
+			def goal_test(target):
+				return len(path) >= max_depth-1 and target == workspace['start_state']
 			def yield_n_existing(n=float('inf')):
 				# print('# PATHS:', len(paths), '|', paths)
 				count = 0
@@ -364,48 +370,59 @@ def extend(module):
 					yield path			
 			def answer_yielder():
 				''' deal with the enumeration strategy and provide side effect interface '''
+				nonlocal nodes_exp, timer
 				heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
 				print('{0}...\t\tnodes explored: {1}\t\t{2:.6g}s ellapsed'.format(len(paths), 
-					workspace['nodes_exp'], time.clock() - workspace['timer']))
-				workspace['timer'], workspace['nodes_exp'] = time.clock(), 0
+					nodes_exp, time.clock() - timer))
+				timer, nodes_exp = time.clock(), 0
 				if len(paths) >= threshold:
 					yield from yield_n_existing(threshold)
-			funset = dict([('init', init), ('enum_append', enum_append), ('answer_yielder', answer_yielder), 
-					('explore_operator', explore_operator), ('final_yielder', yield_n_existing)])
+
+			funs = ['init', 'choice_pop', 'goal_test', 'answer_yielder', 'explore_operator']
+			funset = dict([(k,v) for (k, v) in locals().items() if k in funs])
+			funset['final_yielder'] = yield_n_existing
 			yield from self._general_bt(workspace, funset, max_depth)
 
 		def _general_bt(self, workspace, funset, max_depth):
-			''' 
-				abstracted iterative backtracking solution, parameters are set of functions
+			'''
+				abstracted iterative backtracking archecture, parameters are set of functions
 				very vulnerable because of mixing different local environments
 				poor readability
 			'''
 			elems = ['worklists', 'choice_stack', 'branch_stack', 'start_state', 'end_state']
-			funs = ['init', 'enum_append', 'answer_yielder', 'explore_operator']
+			funs = ['init', 'choice_pop', 'goal_test', 'answer_yielder', 'explore_operator']
 			for e in elems:
 				if e not in workspace:
 					raise BackTrackUtilError(e + ' NEEDED to implement BT')
 			for f in funs:
 				if f not in funset:
-					raise BackTrackUtilError(f + ' NEEDED to implement BT')
+					raise BackTrackUtilError('FUNCTION' + f + ' NEEDED to implement BT')
 			self._prepare_graph(max_depth-1)
-			# print('----------{0}-------------\n{1}\n--------------------'.format(self.steps_explored, self._marking))
+			# print('-----{0}-----\n{1}\n-----'.format(self.steps_explored, self._marking))
 			workspace['end_state'] = workspace['end_state'] if workspace['end_state'] else self._get_state(self.end_marking)
 			if workspace['end_state'] is None: 
 				raise CannotReachErrorr(self)
 			def enum_pop():
 				for wl in workspace['worklists']:
 					wl.pop()
+			def enum_append():
+				numchoice = len(workspace['choice_stack'])
+				target, elems = funset['choice_pop'].__call__()
+				assert len(workspace['choice_stack']) == numchoice - 1
+				workspace['branch_stack'][-1] -= 1
+				for l, e in zip(workspace['worklists'], elems):
+					l.append(e)
+				return target
 			funset['init'].__call__()
 			while len(workspace['choice_stack']) > 0:
 				if workspace['branch_stack'][-1] <= 0: # pop until the current node has positive branches
 					enum_pop()
 					workspace['branch_stack'].pop()
 					continue
-				target = funset['enum_append'].__call__()
+				target = enum_append()
+				if funset['goal_test'].__call__(target):
+					yield from funset['answer_yielder'].__call__()
 				if len(workspace['worklists'][0]) == max_depth - 1:
-					if target == workspace['start_state']:
-						yield from funset['answer_yielder'].__call__()
 					enum_pop()
 					continue
 				new_choices = funset['explore_operator'].__call__(target)
@@ -414,8 +431,34 @@ def extend(module):
 			if 'final_yielder' in funset:
 				yield from funset['final_yielder'].__call__()
 
-		def explore_until_use_of_func(self, start_state, end_state, func_name):
+		def _explore_until_use_of_func(self, start_state, end_state, func_name):
 			''' only allow clone edges or func '''
+			path, edge_stack, branch_stack, paths = [[] for _ in range(4)]
+			# alias
+			workspace = {}
+			workspace['start_state'], workspace['end_state'] = start_state, end_state
+			workspace['worklists'] = [path]
+			workspace['choice_stack'], workspace['branch_stack'] = edge_stack, branch_stack
+
+			explore_operator = lambda t: \
+				list(filter(lambda x: x.startswith('clone_') or x == func_name, self._all_edges_to(t)))
+			def init():
+				edge_stack.extend(explore_operator(workspace['end_state']))
+				branch_stack.extend([len(edge_stack)])
+			def choice_pop():
+				target, edge = edge_stack.pop()
+				return target, [edge]
+			def answer_yielder():
+				while len(paths):
+					yield paths.pop()
+			def goal_test(target):
+				return target == workspace['start_end']
+			funs = ['init', 'choice_pop', 'goal_test', 'answer_yielder', 'explore_operator']
+			funset = dict([(k,v) for (k, v) in locals().items() if k in funs])
+			yield from self._general_bt(workspace, funset, max_depth)
+
+		def _enum_with_part(self, start_state, middle_state, end_state, max_depth, scores):
+			''' find paths from start to end, paths must go through middle, use two enums above '''
 			pass
 
 		def num_states_exlore(self):

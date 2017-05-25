@@ -57,14 +57,14 @@ class SynPart(object):
 			test cases as ["let fun arg0 arg2 = <expected output>"; test2...]
 		'''
 		self.synt = parent_synthesis
-		self.name = self.synt.name_of_syn_func() + '_sub' + str(next(subtask_counter))
-		self.testfile = 'test/' + self.name + '_test.ml'
 		self.subfunc = subfunc
+		self.func_name = subfunc.name
+		self.testfile = 'test/' + self.func_name + '_test.ml'
 		self.tests = mid_tests
 	def _write_test(self):
 		try:
 			with open(self.testfile, 'w') as f:
-				toline = lambda args,result: self.subfunc.name + ' ' + ' '.join(args) + ' = ' + result
+				toline = lambda args,result: self.func_name + ' ' + ' '.join(args) + ' = ' + result
 				lines = (toline(*test) for test in self.tests)
 				write_tests_tofile(lines, f)
 		except Exception as e:
@@ -84,7 +84,7 @@ class SynPart(object):
 		print(self.synt.name_of_syn_func())
 		for code in self.synt.enum_straight_code(firstline=self.subfunc, 
 				stmrk=start, endmrk=end, rec_funcname=self.synt.name_of_syn_func()):
-			if self.synt._test(code, self.name):
+			if self.synt._test(code, self.func_name):
 				sub_code = code
 				break
 		self.synt.testpath = old_test ## end (if failed, this command may not run)
@@ -109,7 +109,7 @@ class Synthesis(object):
 		self.testpath = self.sigtr_dict['testpath']
 		self._construct_components()
 		self.priority_dict = parse_json(func_scores) if func_scores else None
-		# self.name = self.targetfunc.name # TEMPORARY
+		self.accepting_subcode = None
 
 		# attributes allowed to be changed
 		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
@@ -124,7 +124,6 @@ class Synthesis(object):
 					for comp in parse_multiple_dirs(self.dirs) 
 					if self.enab_func_para or not has_func_para(comp['paramTypes']))
 			self.comps = dict(comps)
-		self.sigtr_dict['module'] = ''
 		self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
 
 	def name_of_syn_func(self):
@@ -133,6 +132,7 @@ class Synthesis(object):
 		self.sketch_counter = itertools.count(0)
 		self.enum_counter = itertools.count(0)
 		self.brch_counter = itertools.count(1)
+		self.part_counter = itertools.count(1)
 		self.syn_start_time = time.clock()
 		self.sum_test_time = 0
 	def _build_graph(self, sg):
@@ -157,10 +157,21 @@ class Synthesis(object):
 		return newbrch
 	
 	def syn_subtask(self, sub_dict, middle_tests):
-		''' create  '''
+		''' Called by outside to synthesize subtask of the functionality '''
+		sub_name = self.name_of_syn_func() + '_sub' + str(next(self.part_counter))
+		sub_dict['name'] = sub_name
 		subfunc = SubFunc(sub_dict)
 		synpart = SynPart(self, subfunc, middle_tests)
-		return synpart.get_subtask_code()
+		accepting_subcode = synpart.get_subtask_code()
+		# add new syn'ed function to the petri net and update stategraph
+		self.comps[sub_name] = Component(sub_dict, self.net)
+		for sg in sg.stategraphs:
+			sg.update_with_func(sub_name)
+		if self.accepting_subcode is None:
+			self.accepting_subcode = []
+		self.accepting_subcode.append(accepting_subcode)
+
+		return accepting_subcode
 
 	def start(self, enab_brch=True):
 		'''interface for outside'''
@@ -192,7 +203,6 @@ class Synthesis(object):
 		test_command = ['ocaml', outpath]
 		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
 		result = subproc.communicate()[0]
-		print(result)
 		return b'true' == result
 	def _write_out(self, code_snippet, outpath):
 		'''write the completed code into a file'''
@@ -251,12 +261,8 @@ class Synthesis(object):
 		yield from self.id_codes(firstline, id_varpool)
 		print('--- END OF ID SKETCH ---')
 		if brchout:
-			# try:
 			yield from self.enum_branched_codes()
 			print('--- END OF BRANCH ENUMERATING ---')
-			# except snakes.plugins.search.CannotReachErrorr as cre: # TODO: make it look better
-			# 	print('/////////////////' + str(cre) + '\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\')
-				# exit()
 		print('--- START OF STRAIGHT ENUMERATING ---')
 		if stmrk is None:
 			stmrk = self.targetfunc.get_start_marking()
@@ -337,11 +343,11 @@ class Synthesis(object):
 	def statistics(self):
 		"""show statistics after synthesis"""
 		print('|---------------------- STATISTICS --------------------------|')
-		print('Synthesis Time(printing included):', time.clock() - self.syn_start_time)
+		print('Synthesis Time(printing included): {0}s'.format(time.clock() - self.syn_start_time))
 		print(next(self.sketch_counter), 'sketches enumerated')
 		num_concrete = next(self.enum_counter)
 		print(num_concrete, 'concrete code snippets enumerated')
-		print('Average enumeration time:', self.sum_test_time / num_concrete)
+		print('Average enumeration time: {0}s'.format(self.sum_test_time / num_concrete))
 		print('Number of states explored for each stategraph:')
 		for sg in self.stategraphs:
 			print(sg.num_states_exlore())

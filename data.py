@@ -212,7 +212,7 @@ class Component(Signature):
 	def __init__(self, signature, petri):
 		super(Component, self).__init__(signature)
 		self.net = petri
-		self.name = func_id(signature['module'], signature['name'])
+		self.name = func_id(signature.get('module', ''), signature['name'])
 		self._add_funcs()
 	def __str__(self):
 		return self.name
