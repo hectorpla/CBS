@@ -206,7 +206,6 @@ class SubFunc(TargetFunc):
 	def __str__(self):
 		return repr('SubFunc({0}): {1} -> {2}'.format(self.name, self.paras, self.rtypes))
 
-trans_counter = itertools.count(0) # TEMPORALY
 class Component(Signature):
 	"""A function in the specified library"""
 	def __init__(self, signature, petri):
@@ -227,7 +226,6 @@ class Component(Signature):
 	def _add_funcs(self):
 		inlen = len(self._in)
 		for instance, subst in instantiate_generics(self.io_types(), PRIMITIVE_TYPES):
-			# print(instance)
 			i, o = {}, {} # unpack the input and output
 			for t, w in zip(instance[:inlen], self._in.values()): # {"'a":2} -> [(ground("'a"), 2)]
 				i[t] = i.get(t, 0) + w
@@ -242,7 +240,6 @@ class Component(Signature):
 			_out = _out.items()
 		assert not self.net.has_transition(funcname)
 		self.net.add_transition(Transition(funcname))
-		# print(next(trans_counter), ': funcname:', funcname)
 		for place, weight in _in:
 			if not self.net.has_place(place):
 				self.net.add_place(Place(place))
@@ -258,7 +255,7 @@ class Component(Signature):
 		sk = "let "
 		sk += comma_join(varlist)
 		sk += " = "
-		if self.name in ['^', '=']:
+		if self.name in ['^', '=', ' * ']:
 			assert len(self.paras) == 2
 			self.name = '(' + self.name + ')' # be careful about this inconsistency
 		sk += self.name

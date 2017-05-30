@@ -73,15 +73,13 @@ class SynPart(object):
 	def get_subtask_code(self):
 		''' borrow the parent as a whole, access and modify the modify parent, bad idea! '''
 		self._write_test()
-		# TODO, get start and end marking
 		old_test = self.synt.testpath
 		self.synt.testpath = self.testfile ## begin
 		start = self.subfunc.get_start_marking()
 		end = self.subfunc.get_end_marking()
-		print(start, end)
+		# print(start, end)
 		self.synt.subtask_sgs = [StateGraph(self.synt.net, start=start, end=end)]
 		sub_code = None
-		print(self.synt.name_of_syn_func())
 		for code in self.synt.enum_straight_code(firstline=self.subfunc, 
 				stmrk=start, endmrk=end, rec_funcname=self.synt.name_of_syn_func()):
 			if self.synt._test(code, self.func_name):
@@ -106,10 +104,10 @@ class Synthesis(object):
 		self.stategraphs = None
 		self.subtask_sgs = None # state graphs for subgraphs
 		self._synlen = 5
-		self.testpath = self.sigtr_dict['testpath']
 		self._construct_components()
 		self.priority_dict = parse_json(func_scores) if func_scores else None
 		self.accepting_subcode = None
+		self.finished_subdict = None
 
 		# attributes allowed to be changed
 		self.tgttype = self.targetfunc.rtypes[0] # for only one return value
@@ -159,22 +157,39 @@ class Synthesis(object):
 	def syn_subtask(self, sub_dict, middle_tests):
 		''' Called by outside to synthesize subtask of the functionality '''
 		sub_name = self.name_of_syn_func() + '_sub' + str(next(self.part_counter))
+		subdict_copy = sub_dict.copy()
 		sub_dict['name'] = sub_name
 		subfunc = SubFunc(sub_dict)
 		synpart = SynPart(self, subfunc, middle_tests)
 		accepting_subcode = synpart.get_subtask_code()
 		# add new syn'ed function to the petri net and update stategraph
-		self.comps[sub_name] = Component(sub_dict, self.net)
-		for sg in sg.stategraphs:
+		self.comps[sub_name] = Component(sub_dict, self.stategraphs[0].net)
+		for sg in self.stategraphs:
 			sg.update_with_func(sub_name)
 		if self.accepting_subcode is None:
 			self.accepting_subcode = []
 		self.accepting_subcode.append(accepting_subcode)
-
+		if self.finished_subdict is None:
+			self.finished_subdict = []
+		self.finished_subdict.append(subdict_copy)
 		return accepting_subcode
+	def subfunc_syned(self, subdict):
+		if self.finished_subdict is None:
+			return False
+		for sd in self.finished_subdict:
+			if subdict == sd:
+				return True
+		return False
+
+	def resume_syn(self):
+		''' resume synthesis after getting the solution for middle results '''
+		assert len(self.accepting_subcode) > 0
+		subcode = self.accepting_subcode[-1]
+		sublen = len(subcode) - 2 # assume straight program without considering clone
 
 	def start(self, enab_brch=True):
 		'''interface for outside'''
+		self.testpath = self.sigtr_dict['testpath']
 		id_cand = self.targetfunc.id_func_variables() # arguments in signature having target type
 		start_time = time.clock()
 		try:
@@ -196,10 +211,10 @@ class Synthesis(object):
 			raise kbi
 		print('FAILED...')
 		self.statistics()
-	def _test(self, testsketch, outname):
+	def _test(self, totest, outfilename):
 		'''compile/test the code against user-provided tests'''
-		outpath = 'out/' + outname + '.ml'
-		self._write_out(testsketch, outpath)
+		outpath = 'out/' + outfilename + '.ml'
+		self._write_out(totest, outpath)
 		test_command = ['ocaml', outpath]
 		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
 		result = subproc.communicate()[0]
@@ -246,7 +261,7 @@ class Synthesis(object):
 				break
 			print('++++++Success in Brach Enumerating+++++++')
 			yield combined
-	def enum_concrete_code(self, firstline, id_varpool, stmrk=None, brchout=True, rec_funcname=None):
+	def enum_concrete_code(self, firstline, id_varpool=[], stmrk=None, brchout=True, rec_funcname=None):
 		''' 
 		enumerate completed sketch, called from Synthesis object that stands alone or allowed by synbranch
 		concrete sketch example:
@@ -268,7 +283,7 @@ class Synthesis(object):
 			stmrk = self.targetfunc.get_start_marking()
 		yield from self.enum_straight_code(firstline=firstline, stmrk=stmrk, rec_funcname=rec_funcname)
 
-	def enum_straight_code(self, firstline, stmrk, endmrk=None, rec_funcname=None):
+	def enum_straight_code(self, firstline, stmrk=None, endmrk=None, rec_funcname=None):
 		for sk, skformatter in self._enum_straight_sketch(firstline, stmrk, endmrk, rec_funcname):
 			print(' ~sketche with holes~ ')
 			print_sketch(skformatter.format_out())
@@ -287,7 +302,8 @@ class Synthesis(object):
 		def enum(stategraph, start_marking, end_marking):
 			''' helper for the outer function '''
 			# call interface from the search plugin
-			for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, endmrk=end_marking, max_depth=self._synlen, func_prio=self.priority_dict):
+			for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, endmrk=end_marking, 
+					max_depth=self._synlen, func_prio=self.priority_dict):
 				if rec_funcname is not None and rec_funcname in seq:
 					continue
 				try:
@@ -296,7 +312,6 @@ class Synthesis(object):
 					yield sketch
 				except ConstraintError:
 					pass # ignore sketches that cannot be concretized
-
 		graphpool = self.subtask_sgs if isinstance(firstline, SubFunc) else self.stategraphs
 		for sg in graphpool:
 			if stmrk in sg:
@@ -371,6 +386,7 @@ class Synthesis(object):
 		self.stategraphs[0].net.draw('draws/' + self.targetfunc.name + '_aug.eps')
 	def draw_state_graph(self):
 		self.stategraphs[0].draw('draws/' + self.targetfunc.name + '_sg.eps')
+
 	def draw_alpha(self, filename=None, relevant=False):
 		if filename is None:
 			filename = self.targetfunc.name
