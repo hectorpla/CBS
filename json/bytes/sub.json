@@ -1,0 +1,11 @@
+{
+"name" : "sub",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"bytes", "int", "int"
+],
+"tgtTypes" : "bytes"
+}

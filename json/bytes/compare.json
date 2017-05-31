@@ -1,0 +1,11 @@
+{
+"name" : "compare",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"t", "t"
+],
+"tgtTypes" : "int"
+}

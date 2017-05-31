@@ -10,6 +10,9 @@ class FiledError(Exception):
 	pass
 class SubFuncNotFound(Exception):
 	pass
+class SubFuncAlreadySyn(Exception):
+	pass
+		
 
 def decode_string(string):
 	temp = string.strip(' \'\"')
@@ -24,6 +27,7 @@ class App(Frame):
 	def __init__(self, master=None):
 		super().__init__(master)
 		self.sigtr_dict = None
+		self.prev_subdict = None
 		self.test_entries = []
 		self.midtest_entries = []
 		self.active_tests = 0
@@ -164,7 +168,10 @@ class App(Frame):
 			except Exception as e:
 				print(e)
 			with open(sigtr['testpath'], 'r') as testfile:
-				testcases = re.findall(r'try\((.*?)\)', testfile.read()) # match test wrapped by "try()"
+				teststring = testfile.read()
+				testcases = re.findall(r'try\((.*?)\)', teststring) # match test wrapped by "try()"
+				if len(testcases) == 0:
+					testcases = re.findall(r'let *test[0-9]* *=[ \t]*(.*)', teststring)
 				for _ in range(self.active_tests - len(testcases)):
 					delete_test()
 				for i, testcase in enumerate(testcases):
@@ -186,6 +193,7 @@ class App(Frame):
 		def reload_syn():
 			''' for the convenience of test '''
 			importlib.reload(synthesis)
+			self.synt = None
 			print('synthesis module reloaded')
 		reload_button = Button(self.rightframe, text='reload synthesis module(for test)',
 			command=reload_syn)
@@ -254,8 +262,8 @@ class App(Frame):
 		if not self.sigtr_dict or self.name_entry.get() != self.sigtr_dict['name']:
 			self.read_sigt_info()
 			self.read_test_info()
-			if self.synt is None:
-				self.synt_setup()
+		if self.synt is None:
+			self.synt_setup()
 		try:
 			# parse sub spec 
 			argspec, rtypespec = re.findall('(.*)->(.*)', self.argspec_entry.get())[0]
@@ -273,18 +281,21 @@ class App(Frame):
 			print(e)
 			return
 		# print(selected_argslist)
-
-		# synthesis go		
+		
 		def create_sub_dict():
 			sub_dict = {}
-			sub_dict['name'] = self.synt.name_of_syn_func() + '_sub'
+			# sub_dict['name'] = self.synt.name_of_syn_func() + '_sub' # name managed by synt
 			sub_dict['paramNames'] = \
 				list(select_from_list(self.sigtr_dict['paramNames'], spec_args))
 			sub_dict['paramTypes'] = \
 				list(select_from_list(self.sigtr_dict['paramTypes'], spec_args))
 			sub_dict['tgtTypes'] = subrtype
+			sub_dict['mid_test'] = middle_results
 			return sub_dict
 		sub_dict = create_sub_dict()
+		if self.synt.subfunc_syned(sub_dict):
+			raise SubFuncAlreadySyn()
+		# synthesis go
 		middle_tests = zip(selected_argslist, middle_results)
 		# try:
 		sub_code = self.synt.syn_subtask(sub_dict, middle_tests)

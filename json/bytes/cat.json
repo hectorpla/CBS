@@ -1,0 +1,11 @@
+{
+"name" : "cat",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"bytes", "bytes"
+],
+"tgtTypes" : "bytes"
+}

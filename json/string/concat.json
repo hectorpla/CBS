@@ -1,0 +1,11 @@
+{
+"name" : "concat",
+"module" : "string",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"string", "string list"
+],
+"tgtTypes" : "string"
+}

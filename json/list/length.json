@@ -1,0 +1,11 @@
+{
+"name" : "length",
+"module" : "list",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"'a list"
+],
+"tgtTypes" : "int"
+}

@@ -1,0 +1,11 @@
+{
+"name" : "sort_uniq",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"'a -> 'a -> int", "'a list"
+],
+"tgtTypes" : "'a list"
+}

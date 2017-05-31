@@ -122,7 +122,7 @@ class Synthesis(object):
 					for comp in parse_multiple_dirs(self.dirs) 
 					if self.enab_func_para or not has_func_para(comp['paramTypes']))
 			self.comps = dict(comps)
-		self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
+		# self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
 
 	def name_of_syn_func(self):
 		return self.targetfunc.name

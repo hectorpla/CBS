@@ -1,0 +1,11 @@
+{
+"name" : "set",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"bytes", "int", "char"
+],
+"tgtTypes" : "unit"
+}

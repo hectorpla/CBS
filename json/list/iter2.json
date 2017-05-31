@@ -1,0 +1,11 @@
+{
+"name" : "iter2",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"'a -> 'b -> unit", "'a list", "'b list"
+],
+"tgtTypes" : "unit"
+}

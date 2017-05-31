@@ -1,0 +1,13 @@
+{
+	"name": " * ",
+	"module":"",
+	"paramNames": [
+		"arg0",
+		"arg1"
+	],
+	"paramTypes": [
+		"int",
+		"int"
+	],
+	"tgtTypes": "int"
+}

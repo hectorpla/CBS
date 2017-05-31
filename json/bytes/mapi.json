@@ -1,0 +1,11 @@
+{
+"name" : "mapi",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"int -> char -> char", "bytes"
+],
+"tgtTypes" : "bytes"
+}

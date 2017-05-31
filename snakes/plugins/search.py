@@ -205,8 +205,7 @@ def extend(module):
 		def enumerate_sketch_l(self, stmrk=None, endmrk=None, max_depth=10, func_prio=None):
 			""" yet another generator warpping another, called by synthesis to enumerate sketches incly """
 			start_state = self.get_state(stmrk)
-			# print('?? {0}, {1} ??'.format(end_state, self.end_marking))
-			# print('enumerate_sketch_l: start state -> {0}, end state -> {1}'.format(start_state, end_state))
+			end_state = self._get_state(endmrk) if endmrk else self._get_state(self.end_marking)
 			def enum(l):
 				return self.enumerate_sketch(start_state=start_state, endmrk=endmrk, depth=l) if func_prio is None else\
 			 		self._edge_enum_with_prio(start_state=start_state, end_state=end_state, max_depth=l, scores=func_prio)
@@ -389,7 +388,7 @@ def extend(module):
 			'''
 				abstracted iterative backtracking archecture, parameters are set of functions
 				very vulnerable because of mixing different local environments
-				poor readability
+				UGLY: poor readability
 			'''
 			elems = ['worklists', 'choice_stack', 'branch_stack', 'start_state', 'end_state']
 			funs = ['init', 'choice_pop', 'goal_test', 'answer_yielder', 'explore_operator']

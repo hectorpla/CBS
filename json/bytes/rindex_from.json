@@ -1,0 +1,11 @@
+{
+"name" : "rindex_from",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"bytes", "int", "char"
+],
+"tgtTypes" : "int"
+}

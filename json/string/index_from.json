@@ -1,0 +1,11 @@
+{
+"name" : "index_from",
+"module" : "string",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"string", "int", "char"
+],
+"tgtTypes" : "int"
+}

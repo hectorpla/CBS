@@ -1,0 +1,11 @@
+{
+"name" : "map",
+"module" : "string",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"char -> char", "string"
+],
+"tgtTypes" : "string"
+}

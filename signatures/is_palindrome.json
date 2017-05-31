@@ -6,7 +6,7 @@
 	"paramTypes": [
 		"int list"
 	],
-	"tgtTypes": "char",
+	"tgtTypes": "bool",
 	"libdirs" : ["json/list", "json/char"],
 	"testpath" : "signatures/test14.ml" 
 }

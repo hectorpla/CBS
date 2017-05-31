@@ -1,0 +1,11 @@
+{
+"name" : "mapi",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"int -> 'a -> 'b", "'a list"
+],
+"tgtTypes" : "'b list"
+}

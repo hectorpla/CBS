@@ -1,0 +1,11 @@
+{
+"name" : "iteri",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"int -> 'a -> unit", "'a list"
+],
+"tgtTypes" : "unit"
+}

@@ -1,0 +1,11 @@
+{
+"name" : "flatten",
+"module" : "list",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"'a list list"
+],
+"tgtTypes" : "'a list"
+}

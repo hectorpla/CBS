@@ -109,7 +109,6 @@ Icon?
 "Icon\r"
 draws/
 gui/
-json/
 new_n2n_algo.py
 ocaml/
 out/
@@ -117,4 +116,5 @@ parser_ocaml.zip
 py_practice/
 tags
 old_folder/
-
+test/
+teprog/

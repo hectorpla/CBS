@@ -1,0 +1,11 @@
+{
+"name" : "iteri",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"int -> char -> unit", "bytes"
+],
+"tgtTypes" : "unit"
+}

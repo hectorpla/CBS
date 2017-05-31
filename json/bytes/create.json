@@ -1,0 +1,11 @@
+{
+"name" : "create",
+"module" : "bytes",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"int"
+],
+"tgtTypes" : "bytes"
+}

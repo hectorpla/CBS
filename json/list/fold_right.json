@@ -1,0 +1,11 @@
+{
+"name" : "fold_right",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"'a -> 'b -> 'b", "'a list", "'b"
+],
+"tgtTypes" : "'b"
+}

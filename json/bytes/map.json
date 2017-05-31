@@ -1,0 +1,11 @@
+{
+"name" : "map",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"char -> char", "bytes"
+],
+"tgtTypes" : "bytes"
+}

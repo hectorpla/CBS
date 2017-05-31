@@ -1,0 +1,11 @@
+{
+"name" : "unsafe_of_string",
+"module" : "bytes",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"string"
+],
+"tgtTypes" : "bytes"
+}

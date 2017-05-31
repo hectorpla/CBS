@@ -1,0 +1,11 @@
+{
+"name" : "lowercase_ascii",
+"module" : "string",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"string"
+],
+"tgtTypes" : "string"
+}

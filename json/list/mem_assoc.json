@@ -1,0 +1,11 @@
+{
+"name" : "mem_assoc",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"'a", "('a*'b) list"
+],
+"tgtTypes" : "bool"
+}

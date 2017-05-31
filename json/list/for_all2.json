@@ -1,0 +1,11 @@
+{
+"name" : "for_all2",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"'a -> 'b -> bool", "'a list", "'b list"
+],
+"tgtTypes" : "bool"
+}

@@ -1,0 +1,11 @@
+{
+"name" : "fill",
+"module" : "string",
+"paramNames" : [
+	"arg0", "arg1", "arg2", "arg3"
+],
+"paramTypes" : [
+	"bytes", "int", "int", "char"
+],
+"tgtTypes" : "unit"
+}

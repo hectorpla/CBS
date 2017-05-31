@@ -1,0 +1,11 @@
+{
+"name" : "lowercase_ascii",
+"module" : "bytes",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"bytes"
+],
+"tgtTypes" : "bytes"
+}

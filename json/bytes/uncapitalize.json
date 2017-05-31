@@ -1,0 +1,11 @@
+{
+"name" : "uncapitalize",
+"module" : "bytes",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"bytes"
+],
+"tgtTypes" : "bytes"
+}

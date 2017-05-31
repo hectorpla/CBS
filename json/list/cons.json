@@ -1,0 +1,11 @@
+{
+"name" : "cons",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"'a", "'a list"
+],
+"tgtTypes" : "'a list"
+}

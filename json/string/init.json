@@ -1,0 +1,11 @@
+{
+"name" : "init",
+"module" : "string",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"int", "int -> char"
+],
+"tgtTypes" : "string"
+}

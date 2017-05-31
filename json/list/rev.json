@@ -1,0 +1,11 @@
+{
+"name" : "rev",
+"module" : "list",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"'a list"
+],
+"tgtTypes" : "'a list"
+}

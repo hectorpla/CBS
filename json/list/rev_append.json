@@ -1,0 +1,11 @@
+{
+"name" : "rev_append",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"'a list", "'a list"
+],
+"tgtTypes" : "'a list"
+}

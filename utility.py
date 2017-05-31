@@ -35,12 +35,11 @@ def parse_json(file):
 		f = open(file, 'r')
 		serial = f.read()
 		result = json.loads(serial)
+		f.close()
 	except IOError as ioe:
 		print('IO error: ', ioe)
 	except ValueError as ve:
 		print('value error parsing ' + file, ":", ve)
-	finally:
-		f.close()
 	return result
 
 # utilities for z3

@@ -1,0 +1,11 @@
+{
+"name" : "chr",
+"module" : "char",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"int"
+],
+"tgtTypes" : "char"
+}

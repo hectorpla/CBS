@@ -1,0 +1,11 @@
+{
+"name" : "combine",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"'a list", "'b list"
+],
+"tgtTypes" : "('a*'b) list"
+}

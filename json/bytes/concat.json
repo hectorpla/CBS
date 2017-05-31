@@ -1,0 +1,11 @@
+{
+"name" : "concat",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"bytes", "bytes list"
+],
+"tgtTypes" : "bytes"
+}

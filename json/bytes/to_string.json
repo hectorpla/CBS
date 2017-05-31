@@ -1,0 +1,11 @@
+{
+"name" : "to_string",
+"module" : "bytes",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"bytes"
+],
+"tgtTypes" : "string"
+}

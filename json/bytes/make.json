@@ -1,0 +1,11 @@
+{
+"name" : "make",
+"module" : "bytes",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"int", "char"
+],
+"tgtTypes" : "bytes"
+}

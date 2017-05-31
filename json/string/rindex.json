@@ -1,0 +1,11 @@
+{
+"name" : "rindex",
+"module" : "string",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"string", "char"
+],
+"tgtTypes" : "int"
+}

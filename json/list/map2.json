@@ -1,0 +1,11 @@
+{
+"name" : "map2",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"'a -> 'b -> 'c", "'a list", "'b list"
+],
+"tgtTypes" : "'c list"
+}

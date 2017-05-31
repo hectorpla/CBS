@@ -1,0 +1,11 @@
+{
+"name" : "exists",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"'a -> bool", "'a list"
+],
+"tgtTypes" : "bool"
+}

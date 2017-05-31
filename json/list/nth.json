@@ -1,0 +1,11 @@
+{
+"name" : "nth",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1"
+],
+"paramTypes" : [
+	"'a list", "int"
+],
+"tgtTypes" : "'a"
+}

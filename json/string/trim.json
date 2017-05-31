@@ -1,0 +1,11 @@
+{
+"name" : "trim",
+"module" : "string",
+"paramNames" : [
+	"arg0"
+],
+"paramTypes" : [
+	"string"
+],
+"tgtTypes" : "string"
+}

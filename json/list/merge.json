@@ -1,0 +1,11 @@
+{
+"name" : "merge",
+"module" : "list",
+"paramNames" : [
+	"arg0", "arg1", "arg2"
+],
+"paramTypes" : [
+	"'a -> 'a -> int", "'a list", "'a list"
+],
+"tgtTypes" : "'a list"
+}
