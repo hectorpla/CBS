@@ -1,10 +1,11 @@
-from synthesis import *
+from OCPet import synthesis
+import time
 
-signtr = 'signatures/intchar2string.json'
+signtr = 'signatures/stutter.json'
 score = 'json/scores.json'
 
 construct_start = time.clock()
-syns = Synthesis(sigtr_file=signtr, func_scores=score, enab_func_para=False)
+syns = synthesis.Synthesis(sigtr_file=signtr, func_scores=score, enab_func_para=False)
 print('time spent on initializing a synthesis:', time.clock() - construct_start)
 
 draw_start = time.clock()

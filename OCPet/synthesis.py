@@ -1,5 +1,5 @@
-from data import *
-from sformat import *
+from .data import *
+from .sformat import *
 
 class SynBranch(object):
 	''' basically do the same work as synthesis.
@@ -50,7 +50,6 @@ class SynBranch(object):
 				self.accepting_partial = brchsk
 				return brchsk
 
-subtask_counter = itertools.count(1) # TEMPORARY
 class SynPart(object):
 	def __init__(self, parent_synthesis, subfunc, mid_tests):
 		''' input_cands is a list of (var, type) pairs, and toreturn is a (var, type) 
@@ -244,13 +243,13 @@ class Synthesis(object):
 			# assume t as a string has the formate: 'a list
 			elemtype, _ = t.split(' ')
 			branchings = []
-			branchings.append(Branch(self.targetfunc, (arg, t), []))
-			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)]))
+			branchings.append(Branch(self.targetfunc, (arg, t), [], next(self.brch_counter)))
+			branchings.append(Branch(self.targetfunc, (arg, t), [('hd', elemtype),('tl', t)], next(self.brch_counter)))
 			combined = [self.targetfunc.sketch()] # not good?
 			combined.append(branchings[0].matchline)
 			synbrchs = [] # life span: only lives in the branch enumeration phrase (may cause problem, maybe a good idea)
 			for b in branchings:
-				self._branch_out(synbrchs, b)
+				self._branch_out(synbrchs, b) # TODO: bad logic 
 				partial_sketch = synbrchs[-1].get_accepting_partial()
 				if partial_sketch is None:
 					combined = None
