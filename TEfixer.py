@@ -17,13 +17,14 @@ class TEfixer(object):
 		type_info = utility.parse_json(type_info_file)
 		print(type_info)
 		self.synt = synthesis.Synthesis(type_info)
-		# self.bugpos = self.parse_pos(type_info['position'])
 		self.prog_name = progfile.split('/')[-1].split('.')[0] + '_fixed' if progfile \
 			else type_info['name']
-	# def parse_pos(self, posstr):
-	# 	start, end = posstr.split(',')
-	# 	return (int(start), int(end))
 	def fix(self):
+		funcname = self._extract_rec_orig(self.prog)
+		if funcname:
+			# how to get the type of the function
+			# self.synt.add_component(, self.synt.net)
+			pass
 		self.synt.setup()
 		self.synt.draw_augmented_net()
 		self.synt.draw_state_graph()
@@ -32,16 +33,21 @@ class TEfixer(object):
 			os.mkdir(fix_dir)
 		except FileNotFoundError:
 			os.mkdir(fix_dir.split('/')[0])
+			os.mkdir(fix_dir)
 		except FileExistsError:
 			pass
 		for fixedcode in self.get_fixed_codes():
 			if self._test(fixedcode, fix_dir + self.prog_name):
 				break
 
+	def _extract_rec_orig(self, prog):
+		''' return the original function name if it is recursive '''
+		# fn1 = re.search((r'let +(\w+)'), prog)
+		fn2 = re.search((r'let +rec +(\w+)'), prog)
+		return fn2.group(1) if fn2 else None
 	def _split_code_by_questionmark(self, prog):
 		''' find the ?? (where the fixed code would fill) and return code segment before and after that '''
 		return re.findall(r'(.*)\?\?(.*)', prog, flags=re.DOTALL)[0]
-		# return first.split('\n'), second.split('\n')
 
 	def _test(self, codelines, filename):
 		outpath = filename + '.ml'

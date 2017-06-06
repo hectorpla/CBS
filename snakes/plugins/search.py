@@ -112,7 +112,7 @@ def extend(module):
 			net.set_marking(start) # < tricky construct for stategraph
 			module.StateGraph.__init__(self, net) # a new petri net is created inside
 			net.set_marking(old) # > make net clean again
-			assert self[0] == start
+			assert self[0] == start # failed case: places in start is not consistent with those in the net
 			self.end_marking = end
 			self._add_clones()
 			
