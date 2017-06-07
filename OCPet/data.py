@@ -1,6 +1,6 @@
 from .utility import *
-import snakes.plugins
-snakes.plugins.load(["gv", "pos", "search"], "snakes.nets", "snk")
+from .snakes.plugins.__init__ import load as load_plugins
+load_plugins(["gv", "pos", "search"], "snakes.nets", "snk")
 from snk import *
 
 import copy
@@ -45,7 +45,6 @@ class IOWeightObject(object):
 	def params_of_type(self, t):
 		return list(para for para, typing in self.paras if typing == t)
 
-# brch_counter = itertools.count(1) # temperialy use it
 class Branch(IOWeightObject):
 	def __init__(self, sigtr, brchbef, brchargs, branch_id, brchtype='list'):
 		''' class for a branch of pattern matching

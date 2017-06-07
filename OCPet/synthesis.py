@@ -392,7 +392,7 @@ class Synthesis(object):
 		useful_places = self.stategraphs[0].useful_places
 		graph = self.net.construct_alpha_graph()
 		attr = dict(style="invis", splines="true")
-		todraw = plugins.gv.Graph(attr)
+		todraw = snakes.plugins.gv.Graph(attr)
 		for out in graph:
 			if relevant and out not in useful_places:
 				continue

@@ -1,7 +1,8 @@
 from OCPet import synthesis
+# import OCPet
 import time
 
-signtr = 'signatures/stutter.json'
+signtr = 'signatures/intchar2string.json'
 score = 'json/scores.json'
 
 construct_start = time.clock()
