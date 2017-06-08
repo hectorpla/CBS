@@ -1,0 +1,12 @@
+{
+	"name":"a",
+	"candidates": [],
+	"paramNames": [
+		"fst"
+	],
+	"paramTypes": [
+		"int"
+	],
+	"tgtTypes": "int",
+	"libdirs" : "json/builtins"
+}

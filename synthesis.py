@@ -117,13 +117,19 @@ class Synthesis(object):
 		self._init_stats()
 	def _construct_components(self):
 		'''establish component info'''
-		if self.comps is None:
-			comps = ((func_id(comp['module'], comp['name']), Component(comp, self.net))
-					for comp in parse_multiple_dirs(self.dirs) 
-					if self.enab_func_para or not has_func_para(comp['paramTypes']))
-			self.comps = dict(comps)
+		assert self.comps is None
+		self.comps = {}
+		for comp in parse_multiple_dirs(self.dirs):
+			if self.enab_func_para or not has_func_para(comp['paramTypes']):
+				self.add_component_to_net(comp)
 		# self.comps[self.targetfunc.name] = Component(self.sigtr_dict, self.net) # add self component
-
+		self.add_component_to_net(self.sigtr_dict)
+	def add_component_to_net(self, comp_dict):
+		''' can be called by outside, add a component to the synthesis net '''
+		assert self.stategraphs is None
+		comp_id = func_id(comp_dict['name'], comp_dict.get('module', ''))
+		self.comps[comp_id] = Component(comp_dict, self.net)
+		assert comp_id == self.comps[comp_id].id()
 	def name_of_syn_func(self):
 		return self.targetfunc.name
 	def _init_stats(self):
@@ -393,7 +399,7 @@ class Synthesis(object):
 		useful_places = self.stategraphs[0].useful_places
 		graph = self.net.construct_alpha_graph()
 		attr = dict(style="invis", splines="true")
-		todraw = plugins.gv.Graph(attr)
+		todraw = snakes.plugins.gv.Graph(attr)
 		for out in graph:
 			if relevant and out not in useful_places:
 				continue

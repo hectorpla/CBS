@@ -5,26 +5,22 @@ import os
 import re
 
 class TEfixer(object):
-	def __init__(self, type_info_file, prog=None, progfile=None):
+	def __init__(self, type_info_file, progfile=None):
 		''' expect the prog be a file or lines of code as strings; position be the line range; 
 			type_info and test in .json file
 		'''
-		assert progfile or prog
-		self.prog = prog
-		if prog is None:
-			with open(progfile, 'r') as f:
-				self.prog = f.read()
-		type_info = utility.parse_json(type_info_file)
-		print(type_info)
-		self.synt = synthesis.Synthesis(type_info)
-		self.prog_name = progfile.split('/')[-1].split('.')[0] + '_fixed' if progfile \
-			else type_info['name']
+		assert progfile 
+		with open(progfile, 'r') as f:
+			self.prog = f.read()
+		self.type_info = utility.parse_json(type_info_file)
+		print(self.type_info)
+		self.prog_name = progfile.split('/')[-1].split('.')[0] + '_fixed'
+		self.type_info['name'] = self.prog_name
+		self.synt = synthesis.Synthesis(self.type_info)
 	def fix(self):
 		funcname = self._extract_rec_orig(self.prog)
 		if funcname:
-			# how to get the type of the function
-			# self.synt.add_component(, self.synt.net)
-			pass
+			self._add_rec_comp()
 		self.synt.setup()
 		self.synt.draw_augmented_net()
 		self.synt.draw_state_graph()
@@ -41,14 +37,17 @@ class TEfixer(object):
 				break
 
 	def _extract_rec_orig(self, prog):
-		''' return the original function name if it is recursive '''
+		''' return the name of function to fix if it is recursive '''
 		# fn1 = re.search((r'let +(\w+)'), prog)
 		fn2 = re.search((r'let +rec +(\w+)'), prog)
 		return fn2.group(1) if fn2 else None
 	def _split_code_by_questionmark(self, prog):
 		''' find the ?? (where the fixed code would fill) and return code segment before and after that '''
 		return re.findall(r'(.*)\?\?(.*)', prog, flags=re.DOTALL)[0]
-
+	def _add_rec_comp(self):
+		''' add the funciton to fix as a component to the synthesis instance '''
+		sgntr = self.type_info['tofix']
+		self.synt.add_component_to_net(sgntr)
 	def _test(self, codelines, filename):
 		outpath = filename + '.ml'
 		with open(outpath, 'w') as targetfile:
@@ -59,13 +58,14 @@ class TEfixer(object):
 		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
 		return b'true' == subproc.communicate()[0]
 	def get_fixed_codes(self):
-		first, second = self._split_code_by_questionmark(self.prog)	
-		for code in self.synt.enum_concrete_code(firstline=self.synt.targetfunc, rec_funcname=self.prog_name):
-			# fixedpart = '(' + ' '.join(code[1:]) + ')' # not correct if the syn'ed code is a recursive func
+		front, back = self._split_code_by_questionmark(self.prog)
+		fst = self.synt.targetfunc	
+		for code in self.synt.enum_concrete_code(firstline=fst, id_varpool=fst.id_func_variables(),
+				brchout=False, rec_funcname=self.prog_name): # brch enum disabled
 			prog = []
-			prog.append(first)
+			prog.append(front)
 			prog.append("(* syn'd *) (")
-			prog.extend(code[1:]) # vulnerable
+			prog.extend(code[1:]) # not correct if the syn'ed code is a recursive func
 			prog.append(") (* syn'd *)")
-			prog.append(second)
+			prog.append(back)
 			yield prog

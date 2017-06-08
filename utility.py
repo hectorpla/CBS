@@ -8,7 +8,7 @@ second_elem_of_tuple = lambda x: x[1]
 
 def cap_initial(s):
 	return str.upper(s[0]) + s[1:]
-def func_id(module, name):
+def func_id(name, module=''):
 	if len(module) == 0:
 		return name
 	return cap_initial(module) + '.' + name

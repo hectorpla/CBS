@@ -1,0 +1,21 @@
+{
+	"paramNames": [
+		"rest"
+	],
+	"paramTypes": [
+		"int list"
+	],
+	"tgtTypes": "int list",
+	"libdirs" : "json/builtins",
+	"tofix" : 
+	{
+		"name":"f",
+		"paramNames": [
+			"lst"
+		],
+		"paramTypes": [
+			"int list"
+		],
+		"tgtTypes": "int list"
+	}
+}
