@@ -1,13 +1,19 @@
 from tkinter import *
 import synthesis
+import TEfixer
 import utility
 
-from os import mkdir
+import os
 import re
 import importlib
+import json
 
-class FiledError(Exception):
-	pass
+SYN_MODE = 1
+FIX_MODE = 2
+
+class FieldError(Exception):
+	def __init__(self, msg):
+		self.msg = msg
 class SubFuncNotFound(Exception):
 	pass
 class SubFuncAlreadySyn(Exception):
@@ -87,6 +93,22 @@ class App(Frame):
 		self.libs_entry = Entry(self.left_input_sub_panel, width=30)
 		self.libs_entry.grid(row=4, column=1)
 
+		# fixer feature
+		def print_val():
+			print('Current mode:', self.mode.get())
+		self.mode = IntVar()
+		radio_frame = Frame(self.left_input_sub_panel)
+		radio_frame.grid(row=0, column=2)
+		syn_radio = Radiobutton(radio_frame, text='syn', variable=self.mode, value=SYN_MODE, command=print_val)
+		syn_radio.grid(row=0, column=0)
+		fix_radio = Radiobutton(radio_frame, text='fix', variable=self.mode, value=FIX_MODE, command=print_val)
+		fix_radio.grid(row=1, column=0)
+		create_sigtr_json_button = Button(self.left_input_sub_panel, text='create json')
+		create_sigtr_json_button.grid(row=4, column=2)
+		create_sigtr_json_button['command'] = self.create_json
+
+	# _________________________________________________________________________________
+	# the panel on the right
 	def create_right_panel(self):
 		self.rightframe = Frame(self, width=380, height=550)
 		self.rightframe.pack(side='left')
@@ -96,7 +118,6 @@ class App(Frame):
 		self.testframe.pack()
 
 		test_example = Label(self.testframe, text='Example: stutter [1;2] = [1;1;2;2]')
-		# test_example.grid(row=0, column=0)
 		test_example.pack(side='top')
 
 		def add_test():
@@ -129,7 +150,7 @@ class App(Frame):
 		self.delete_button.grid(row=0, column=1)
 		self.clear_button = Button(buttonframe1, text='Clear text', 
 			command=lambda: self.codeview.delete(1.0, END))
-		self.clear_button.grid(row=1, column=1)
+		self.clear_button.grid(row=1, column=2)
 		self.syn_button = Button(buttonframe1, text='Start synthesis', command=self.start_synthesis)
 		self.syn_button.grid(row=1, column=0)
 		
@@ -151,24 +172,15 @@ class App(Frame):
 		importframe.pack(side='bottom')
 		import_entry = Entry(importframe)
 		import_entry.grid(row=0, column=0)
-		def import_json():
-			def set_text(ent, text):
-				ent.delete(0, END)
-				ent.insert(0, text)
-			try:
-				filename = import_entry.get()
-				sigtr = utility.parse_json('signatures/' + filename.strip())
-				list2string = lambda lst : '; '.join(lst)
-				set_text(self.name_entry, sigtr['name'])
-				set_text(self.para_entry, list2string(sigtr['paramNames']))
-				set_text(self.para_type_entry, list2string(sigtr['paramTypes']))
-				set_text(self.return_type_entry, sigtr['tgtTypes'])
-				set_text(self.libs_entry, 
-					list2string(sigtr['libdirs']) if isinstance(sigtr['libdirs'], list) else sigtr['libdirs'])
-			except Exception as e:
-				print(e)
-			with open(sigtr['testpath'], 'r') as testfile:
-				teststring = testfile.read()
+		json_import_button = Button(importframe, text='Import json file')
+		json_import_button.grid(row=0, column=1)
+		test_import_button = Button(importframe, text='Import test')	
+		test_import_button.grid(row=1, column=1)
+
+		def import_test(testfile):
+			''' extract test cases from the file and put them in the test-entries '''
+			with open(testfile, 'r') as f:
+				teststring = f.read()
 				testcases = re.findall(r'try\((.*?)\)', teststring) # match test wrapped by "try()"
 				if len(testcases) == 0:
 					testcases = re.findall(r'let *test[0-9]* *=[ \t]*(.*)', teststring)
@@ -179,16 +191,46 @@ class App(Frame):
 						return
 					if self.active_tests <= i:
 						add_test()
-					set_text(self.test_entries[i][0], testcase)
-		import_button = Button(importframe, text='Import json file', command=import_json)
-		import_button.grid(row=0, column=1)
+					self.set_text(self.test_entries[i][0], testcase)			
 
+		def import_json():
+			# try:
+			filename = import_entry.get()
+			sigtr = utility.parse_json('signatures/' + filename.strip())
+			list2string = lambda lst : '; '.join(lst)
+			self.set_text(self.name_entry, sigtr['name'])
+			self.set_text(self.para_entry, list2string(sigtr['paramNames']))
+			self.set_text(self.para_type_entry, list2string(sigtr['paramTypes']))
+			self.set_text(self.return_type_entry, sigtr['tgtTypes'])
+			self.set_text(self.libs_entry, 
+				list2string(sigtr['libdirs']) if isinstance(sigtr['libdirs'], list) else sigtr['libdirs'])
+			# except Exception as e:
+			# 	print(e)
+			import_test(sigtr['testpath'])
+
+		def find_and_import(testfile, path):
+			''' find the specified test file and import it '''
+			def search_file(name, path):
+				for root, dirs, files in os.walk(path):
+					if name in files:
+						return os.path.join(root, name)
+			abs_name = search_file(testfile, path)
+			if abs_name: import_test(abs_name)
+
+		json_import_button['command'] = import_json
+		test_import_button['command'] = lambda: find_and_import(import_entry.get(), '.')
+		
+		# Partial Synthesis
 		synpart_frame = Frame(self.rightframe)
 		synpart_frame.pack(side='bottom')
 		midtest_button = Button(synpart_frame, text='Add middle tests', command=self.create_mid_test_panel)
 		midtest_button.grid(row=0, column=0)
 		syn_part_button = Button(synpart_frame, text='Syn Part', command=self.synthesize_nested_function)
 		syn_part_button.grid(row=0, column=1)
+		
+		# Fixer related
+		fix_button = Button(buttonframe1, text='Fix', command=self.fix_program)
+		fix_button.grid(row=1, column=1)
 
 		def reload_syn():
 			''' for the convenience of test '''
@@ -221,34 +263,67 @@ class App(Frame):
 			self.midtest_entries.append(Entry(self.midtestframe))
 			self.midtest_entries[-1].pack(side='top')
 
+
+	# _____________________________________________________________________________________
+	# class methods
+	def set_text(self, ent, text):
+			ent.delete(0, END)
+			ent.insert(0, text)
+	def set_error(self, msg):
+		def flash(count):
+			bg = self.errmsg_label.cget('background')
+			fg = self.errmsg_label.cget('foreground')
+			self.errmsg_label.configure(background=fg, foreground=bg)
+			count -= 1
+			if count:
+				self.errmsg_label.after(80, flash, count)
+		self.errmsg.set(msg)
+		bbg, bfg = self.errmsg_label.cget('background'), self.errmsg_label.cget('foreground')
+		self.errmsg_label.configure(background='red') # weird black
+		flash(4)
+		self.errmsg_label.configure(background=bfg, foreground=bbg)
+
+	def read_code(self):
+		return self.codeview.get()
+
 	def read_sigt_info(self):
-		self.sigtr_dict = {}
+		sigtr_dict = {}
 		extract_list = lambda lst : list(map(str.strip, lst.split(';')))
-		self.sigtr_dict['name'] = self.name_entry.get().strip()
-		self.sigtr_dict['paramNames'] = extract_list(self.para_entry.get())
-		self.sigtr_dict['paramTypes'] = extract_list(self.para_type_entry.get())
-		self.sigtr_dict['libdirs'] = extract_list(self.libs_entry.get())
-		self.sigtr_dict['tgtTypes'] = extract_list(self.return_type_entry.get())
-		print(self.sigtr_dict)
+		sigtr_dict['name'] = self.name_entry.get().strip()
+		sigtr_dict['paramNames'] = extract_list(self.para_entry.get())
+		sigtr_dict['paramTypes'] = extract_list(self.para_type_entry.get())
+		sigtr_dict['libdirs'] = extract_list(self.libs_entry.get())
+		sigtr_dict['tgtTypes'] = extract_list(self.return_type_entry.get())
+		print(sigtr_dict)
 		# check valid synthesis parameter
-		if any([e == '' or e == [''] for e in self.sigtr_dict.values()]):
-			self.errmsg.set('Some of the fields are empty')
-			raise FiledError()
-		if len(self.sigtr_dict['paramNames']) != len(self.sigtr_dict['paramTypes']):
-			self.errmsg.set('Lengths of parameters and types do not agree')
-			raise FiledError()
+		if any([e == '' or e == [''] for e in sigtr_dict.values()]):
+			self.set_error('Some of the fields are empty')
+			raise FieldError('empty field')
+		if len(sigtr_dict['paramNames']) != len(sigtr_dict['paramTypes']):
+			self.set_error('Lengths of parameters and types do not agree')
+			raise FieldError('inconsisent length')
+		return sigtr_dict
 	def read_test_info(self):
 		folder = 'test'
 		test_file = folder + '/' + self.sigtr_dict['name'] + '_test.ml'
 		try:
-			mkdir(folder)
+			os.mkdir(folder)
 		except FileExistsError:
 			pass
 		with open(test_file, 'w') as f:
 			tests = (test_entry[1].get() for test_entry in self.test_entries[:self.active_tests])
 			utility.write_tests_tofile(tests, f)
 			self.sigtr_dict['testpath'] = test_file
-	def get_inputs(self, selector):	
+	def create_json(self):
+		if self.mode.get() != FIX_MODE:
+			self.set_error('button "create json" is only allowed in fix mode')
+			return
+		sigtr_dict = self.read_sigt_info()
+		del sigtr_dict['name']
+		with open('teprog/fix_exported.json', 'w') as f:
+			json.dump(sigtr_dict, f)
+	def get_inputs(self, selector):
+		''' to document '''
 		selected = select_from_list(self.test_entries, selector) # select vertically
 		io_series = (e[0].get().split('=') for e in selected)
 		lhs, rhs = [], []
@@ -260,7 +335,7 @@ class App(Frame):
 	def synthesize_nested_function(self):
 		# be careful of inconsistency
 		if not self.sigtr_dict or self.name_entry.get() != self.sigtr_dict['name']:
-			self.read_sigt_info()
+			self.sigtr_dict = self.read_sigt_info()
 			self.read_test_info()
 		if self.synt is None:
 			self.synt_setup()
@@ -310,21 +385,37 @@ class App(Frame):
 		self.synt.setup()
 		self.synt.set_syn_len(self.syn_len)
 
-	def start_synthesis(self):
-		try:
-			self.read_sigt_info()
-			self.read_test_info()
-		except FiledError:
+	def fix_program(self):
+		if self.mode.get() != FIX_MODE:
+			set_error('"fix" button only allowed in fix mode')
 			return
-		self.errmsg.set('')
+		# design it carefully
+		# program
+		# tefx = TEfixer(, self.read_code())
+
+	def start_synthesis(self):
+		''' start synthesis from scratch in syn mode, 
+			synthesize ?? part program in fix mode
+		'''
+		try:
+			self.sigtr_dict = self.read_sigt_info()
+			self.read_test_info()
+		except FieldError:
+			return
+		self.set_error('')
 		self.synt_setup()
 		try:
-			solution = self.synt.start()
+			if self.mode.get() == 2:
+				solution = self.fix_program()
+			else:
+				solution = self.synt.start()
 		except synthesis.snakes.plugins.search.CannotReachErrorr as cre:
-			self.errmsg.set(cre)
+			self.set_error(cre)
 			return
 		if solution:
 			self.set_code(solution)
+		else:
+			self.set_code(['Program not found.'])
 
 	def set_code(self, toshow):
 		self.codeview.delete(1.0, END)
