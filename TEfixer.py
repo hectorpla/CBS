@@ -6,8 +6,8 @@ import re
 
 class TEfixer(object):
 	def __init__(self, type_info_file, progfile=None, prog=None):
-		''' expect the prog be a file or lines of code as strings; position be the line range; 
-			type_info and test in .json file
+		''' expect the prog be a file or a string of code as strings;  
+			position be the line range; type_info and test in .json file
 		'''
 		assert progfile or prog
 		if progfile:
@@ -28,18 +28,20 @@ class TEfixer(object):
 		self.synt.setup()
 		self.synt.draw_augmented_net()
 		self.synt.draw_state_graph()
-		fix_dir = 'out/fix/'
-		try:
-			os.mkdir(fix_dir)
-		except FileNotFoundError:
-			os.mkdir(fix_dir.split('/')[0])
-			os.mkdir(fix_dir)
-		except FileExistsError:
-			pass
+		fix_dir = 'fix/'
+		outname = fix_dir + self.prog_name
+		utility.make_dir_for_file(outname)
+		if 'testpath' in self.__dict__:
+			test = self.synt._test
+		else:
+			test = self._test
+		print(test, self.testpath)
 		for fixedcode in self.get_fixed_codes():
-			if self._test(fixedcode, fix_dir + self.prog_name):
-				break
+			if test(fixedcode, outname, self.__dict__.get('testpath', '')):
+				return fixedcode
 
+	def set_testpath(self, path):
+		self.testpath = path
 	def _extract_funcname(self, prog):
 		''' return the name of the function to fix '''
 		name1 = re.search((r'let +(\w+)'), prog).group(1)
@@ -59,8 +61,8 @@ class TEfixer(object):
 			self.synt.add_component_to_net(sgntr)
 		except KeyError:
 			pass
-	def _test(self, codelines, filename):
-		outpath = filename + '.ml'
+	def _test(self, codelines, filename, dummy=None):
+		outpath = '/out' + filename + '.ml'
 		with open(outpath, 'w') as targetfile:
 			# targetfile.write('exception Syn_exn\n\n')
 			for line in codelines:

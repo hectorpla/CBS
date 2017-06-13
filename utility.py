@@ -1,4 +1,4 @@
-from os import listdir
+import os
 import json
 import itertools
 import re
@@ -13,6 +13,7 @@ def func_id(name, module=''):
 		return name
 	return cap_initial(module) + '.' + name
 
+# ____________________________________________________________________
 # parsing utility
 def parse_multiple_dirs(dirs):
 	l = []
@@ -21,11 +22,11 @@ def parse_multiple_dirs(dirs):
 	return l
 
 def parse_dir(dir):
-	if dir[-1] != '/':
-		dir += '/'
-	# try:
-	# 	listdir(dir)
-	m = map(lambda file: parse_json(dir + file), listdir(dir))
+	dir = dir.rstrip('/')
+	prefix = search_file(dir, ftype='dir')
+	if not prefix:
+		raise FileNotFoundError("can't find {0} in '{1}'".format(file, path))
+	m = map(lambda file: parse_json(prefix + '/' + file), os.listdir(prefix))
 	return [e for e in m if e is not None]
 
 def parse_json(file):
@@ -33,15 +34,16 @@ def parse_json(file):
 	result = None
 	try:
 		f = open(file, 'r')
-		serial = f.read()
+		serial = f.read() # what if crush here, the file will not be closed
 		result = json.loads(serial)
 		f.close()
 	except IOError as ioe:
 		print('IO error: ', ioe)
 	except ValueError as ve:
-		print('value error parsing ' + file, ":", ve)
+		print('value error parsing ' + file, ":", ve)		
 	return result
 
+# ____________________________________________________________________
 # utilities for z3
 def var_generator():
 	cur = 0
@@ -74,6 +76,7 @@ def print_sketch(sketch):
 	for line in sketch:
 		print(line)
 
+# ____________________________________________________________________
 # utility for generic grounding
 RE_GENERICS = "'[a-z][0-9a-z]*"
 
@@ -139,6 +142,7 @@ def has_func_para(types):
 			return True
 	return False
 
+# ____________________________________________________________________
 # write test to file
 def write_tests_tofile(lines, f):
 	for test_num, test in enumerate(lines):
@@ -147,3 +151,32 @@ def write_tests_tofile(lines, f):
 		f.write(') with Syn_exn -> true\n')
 	f.write('let _ = print_string (string_of_bool ({0}))\n'.\
 		format(' && '.join(['test' + str(i) for i in range(test_num+1)])))
+
+def make_dir_for_file(filename):
+	''' make sure all components of the path exist '''
+	components = re.split(r'/+', filename)
+	if len(components) < 2: return
+	sofar = components[0]
+	for c in components[1:]:
+		try:
+			os.mkdir(sofar)
+		except FileExistsError:
+			pass
+		sofar += '/' + c
+
+def search_file(name, ftype='file'):
+	''' search a file recursively in a path (assume it is contained the cwd)
+		if prefix is given, find the absolute '''
+	components = re.split(r'/+', name.lstrip('/'))
+	filename = components[-1]
+	prefix = '.'
+	if len(components) > 1:
+		for c in components[:-1]:
+			if c not in os.listdir(prefix):
+				raise FileExistsError("{0} doesn't exist in {1}".format(c, prefix))
+			prefix += '/' + c
+	for root, dirs, files in os.walk(prefix):
+		contents = files if ftype == 'file' else dirs
+		# print(contents)
+		if filename in contents:
+			return os.path.join(root, filename)

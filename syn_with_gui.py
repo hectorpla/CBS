@@ -37,7 +37,8 @@ class App(Frame):
 		self.test_entries = []
 		self.midtest_entries = []
 		self.active_tests = 0
-		self.max_active = 10		
+		self.max_active = 10
+		self.fix_json = 'teprog/fix_exported.json'		
 
 		self.pack()
 		self.create_left_panel()
@@ -183,7 +184,7 @@ class App(Frame):
 				teststring = f.read()
 				testcases = re.findall(r'try\((.*?)\)', teststring) # match test wrapped by "try()"
 				if len(testcases) == 0:
-					testcases = re.findall(r'let *test[0-9]* *=[ \t]*(.*)', teststring)
+					testcases = re.findall(r'let +test[0-9]* *= *(.+)', teststring)
 				for _ in range(self.active_tests - len(testcases)):
 					delete_test()
 				for i, testcase in enumerate(testcases):
@@ -191,10 +192,9 @@ class App(Frame):
 						return
 					if self.active_tests <= i:
 						add_test()
-					self.set_text(self.test_entries[i][0], testcase)			
+					self.set_text(self.test_entries[i][0], testcase)
 
 		def import_json():
-			# try:
 			filename = import_entry.get()
 			sigtr = utility.parse_json('signatures/' + filename.strip())
 			list2string = lambda lst : '; '.join(lst)
@@ -204,19 +204,18 @@ class App(Frame):
 			self.set_text(self.return_type_entry, sigtr['tgtTypes'])
 			self.set_text(self.libs_entry, 
 				list2string(sigtr['libdirs']) if isinstance(sigtr['libdirs'], list) else sigtr['libdirs'])
-			# except Exception as e:
-			# 	print(e)
 			import_test(sigtr['testpath'])
 
 		def find_and_import(testfile, path):
 			''' find the specified test file and import it '''
-			def search_file(name, path):
-				for root, dirs, files in os.walk(path):
-					if name in files:
-						return os.path.join(root, name)
-			abs_name = search_file(testfile, path)
-			if abs_name: import_test(abs_name)
-
+			if self.mode.get() != FIX_MODE:
+				self.set_error('import test in fix mode')
+				return
+			abs_name = utility.search_file(testfile)
+			if abs_name: 
+				import_test(abs_name)
+			else:
+				self.set_error('no such test file')
 		json_import_button['command'] = import_json
 		test_import_button['command'] = lambda: find_and_import(import_entry.get(), '.')
 		
@@ -235,9 +234,10 @@ class App(Frame):
 		def reload_syn():
 			''' for the convenience of test '''
 			importlib.reload(synthesis)
+			importlib.reload(TEfixer)
 			self.synt = None
-			print('synthesis module reloaded')
-		reload_button = Button(self.rightframe, text='reload synthesis module(for test)',
+			print('synthesis, TEfixer module reloaded')
+		reload_button = Button(self.rightframe, text='reload modules(for test)',
 			command=reload_syn)
 		reload_button.pack(side='bottom')
 
@@ -283,8 +283,13 @@ class App(Frame):
 		flash(4)
 		self.errmsg_label.configure(background=bfg, foreground=bbg)
 
+	def clear_all_entries(self):
+		for field in self.__dict__:
+			if isinstance(field, Entry):
+				self.set_text(field, '')
+
 	def read_code(self):
-		return self.codeview.get()
+		return self.codeview.get("1.0", END)
 
 	def read_sigt_info(self):
 		sigtr_dict = {}
@@ -306,22 +311,21 @@ class App(Frame):
 	def read_test_info(self):
 		folder = 'test'
 		test_file = folder + '/' + self.sigtr_dict['name'] + '_test.ml'
-		try:
-			os.mkdir(folder)
-		except FileExistsError:
-			pass
+		utility.make_dir_for_file(test_file)
 		with open(test_file, 'w') as f:
 			tests = (test_entry[1].get() for test_entry in self.test_entries[:self.active_tests])
 			utility.write_tests_tofile(tests, f)
 			self.sigtr_dict['testpath'] = test_file
+			self.test_prog_file = test_file
+		return test_file
 	def create_json(self):
 		if self.mode.get() != FIX_MODE:
 			self.set_error('button "create json" is only allowed in fix mode')
 			return
 		sigtr_dict = self.read_sigt_info()
-		del sigtr_dict['name']
-		with open('teprog/fix_exported.json', 'w') as f:
+		with open(self.fix_json, 'w') as f:
 			json.dump(sigtr_dict, f)
+		return sigtr_dict
 	def get_inputs(self, selector):
 		''' to document '''
 		selected = select_from_list(self.test_entries, selector) # select vertically
@@ -372,7 +376,6 @@ class App(Frame):
 			raise SubFuncAlreadySyn()
 		# synthesis go
 		middle_tests = zip(selected_argslist, middle_results)
-		# try:
 		sub_code = self.synt.syn_subtask(sub_dict, middle_tests)
 		if sub_code:
 			self.set_code(sub_code)
@@ -381,17 +384,28 @@ class App(Frame):
 
 	def synt_setup(self):
 		score = 'json/scores.json'
-		self.synt = synthesis.Synthesis(sigtr_dict=self.sigtr_dict, func_scores=score)
-		self.synt.setup()
-		self.synt.set_syn_len(self.syn_len)
+		try:
+			self.synt = synthesis.Synthesis(sigtr_dict=self.sigtr_dict, func_scores=score)
+			self.synt.setup()
+			self.synt.set_syn_len(self.syn_len)
+		except FileNotFoundError as fne:
+			self.set_error(str(fne))
 
 	def fix_program(self):
 		if self.mode.get() != FIX_MODE:
-			set_error('"fix" button only allowed in fix mode')
+			self.set_error('"fix" button only allowed in fix mode')
 			return
 		# design it carefully
-		# program
-		# tefx = TEfixer(, self.read_code())
+		self.sigtr_dict = self.create_json()
+		self.read_test_info()
+		tefx = TEfixer.TEfixer(self.fix_json, prog=self.read_code())
+		tefx.set_testpath(self.read_test_info())
+		fixed = tefx.fix()
+		if fixed:
+			self.set_code(fixed)
+		else:
+			self.set_error('fixer failed to fill out the blank')
+		self.clean_temps()
 
 	def start_synthesis(self):
 		''' start synthesis from scratch in syn mode, 
@@ -405,10 +419,7 @@ class App(Frame):
 		self.set_error('')
 		self.synt_setup()
 		try:
-			if self.mode.get() == 2:
-				solution = self.fix_program()
-			else:
-				solution = self.synt.start()
+			solution = self.synt.start()
 		except synthesis.snakes.plugins.search.CannotReachErrorr as cre:
 			self.set_error(cre)
 			return
@@ -422,7 +433,12 @@ class App(Frame):
 		for line in toshow:
 			self.codeview.insert(END, line + '\n')
 
-
+	def clean_temps(self):
+		try:
+			os.remove(self.fix_json)
+			os.remove(self.test_prog_file)
+		except:
+			pass
 root = Tk('OCaml Program Synthesis')
 root.geometry("1100x600")
 app = App(master=root)

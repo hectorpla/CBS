@@ -1,5 +1,6 @@
 from data import *
 from sformat import *
+import utility
 
 class SynBranch(object):
 	''' basically do the same work as synthesis.
@@ -73,19 +74,18 @@ class SynPart(object):
 	def get_subtask_code(self):
 		''' borrow the parent as a whole, access and modify the modify parent, bad idea! '''
 		self._write_test()
-		old_test = self.synt.testpath
-		self.synt.testpath = self.testfile ## begin
+		# old_test = self.synt.testpath
+		# self.synt.testpath = self.testfile ## begin
 		start = self.subfunc.get_start_marking()
 		end = self.subfunc.get_end_marking()
-		# print(start, end)
 		self.synt.subtask_sgs = [StateGraph(self.synt.net, start=start, end=end)]
 		sub_code = None
 		for code in self.synt.enum_straight_code(firstline=self.subfunc, 
 				stmrk=start, endmrk=end, rec_funcname=self.synt.name_of_syn_func()):
-			if self.synt._test(code, self.func_name):
+			if self.synt._test(code, self.func_name, testpath=self.testfile):
 				sub_code = code
 				break
-		self.synt.testpath = old_test ## end (if failed, this command may not run)
+		# self.synt.testpath = old_test ## end (if failed, this command may not run)
 		return sub_code
 
 class Synthesis(object):
@@ -217,21 +217,23 @@ class Synthesis(object):
 			raise kbi
 		print('FAILED...')
 		self.statistics()
-	def _test(self, totest, outfilename):
+	def _test(self, totest, outfilename, testpath=None):
 		'''compile/test the code against user-provided tests'''
+		testpath = testpath if testpath else self.testpath
 		outpath = 'out/' + outfilename + '.ml'
-		self._write_out(totest, outpath)
+		utility.make_dir_for_file(outpath)
+		self._write_out(totest, testpath, outpath)
 		test_command = ['ocaml', outpath]
 		subproc = subprocess.Popen(test_command, stdout=subprocess.PIPE)
 		result = subproc.communicate()[0]
 		return b'true' == result
-	def _write_out(self, code_snippet, outpath):
+	def _write_out(self, code_snippet, testpath, outpath):
 		'''write the completed code into a file'''
 		with open(outpath, 'w') as targetfile:
 			targetfile.write('exception Syn_exn\n\n')
 			for line in code_snippet:
 				targetfile.write(line + '\n')
-			with open(self.testpath) as test:
+			with open(testpath) as test:
 				targetfile.write(test.read())
 	def id_codes(self, firstline, varpool):
 		'''yield functions that return one of the parameters(in signature or branch)'''
