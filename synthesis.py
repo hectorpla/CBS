@@ -115,6 +115,7 @@ class Synthesis(object):
 		self.end_marking = self.targetfunc.get_end_marking()
 
 		self._init_stats()
+		self._config_output_paths()
 	def _construct_components(self):
 		'''establish component info'''
 		assert self.comps is None
@@ -139,6 +140,12 @@ class Synthesis(object):
 		self.part_counter = itertools.count(1)
 		self.syn_start_time = time.clock()
 		self.sum_test_time = 0
+	def _config_output_paths(self):
+		self.outpath = 'out/'
+		self.drawpath = 'draws/'
+		try_mkdir(self.outpath)
+		try_mkdir(self.drawpath)
+
 	def _build_graph(self, sg):
 		''' wrapper for building the complete reachability graph, 
 			DECREPATATED because no need construct whole reachability graph '''
@@ -193,7 +200,7 @@ class Synthesis(object):
 
 	def resume_syn(self):
 		''' resume synthesis after getting the solution for middle results '''
-		assert len(self.accepting_subcode) > 0
+		assert len(self.accepting_subcode) == 1
 		subcode = self.accepting_subcode[-1]
 		sublen = len(subcode) - 2 # assume straight program without considering clone
 
@@ -224,7 +231,7 @@ class Synthesis(object):
 	def _test(self, totest, outfilename, testpath=None):
 		'''compile/test the code against user-provided tests'''
 		testpath = testpath if testpath else self.testpath
-		outpath = 'out/' + outfilename + '.ml'
+		outpath = self.outpath + outfilename + '.ml'
 		utility.make_dir_for_file(outpath)
 		self._write_out(totest, testpath, outpath)
 		test_command = ['ocaml', outpath]
@@ -381,23 +388,22 @@ class Synthesis(object):
 		print('|------------------------------------------------------------|')
 
 	def print_comps(self):
-		comp_counter = itertools.count(0)
-		for c in self.comps:
-			print(next(comp_counter), c)
+		for i, c in enumerate(self.comps.values()):
+			print(i, c)
 	def draw_net(self):
 		numnode = len(self.net._place) + len(self.net._trans) # for convenience
 		if numnode > 200:
 			print('*************** Warning: PetriNet too large(' + str(numnode) 
 				+ ' nodes), drop drawing ***************')
 			return
-		self.net.draw('draws/' + self.targetfunc.name + '.eps')
+		self.net.draw(self.drawpath + self.targetfunc.name + '.eps')
 	def draw_augmented_net(self):
 		assert self.stategraphs is not None
 		print('stategraphs[0] start:', self.stategraphs[0][0])
 		self.stategraphs[0].goto(0)
-		self.stategraphs[0].net.draw('draws/' + self.targetfunc.name + '_aug.eps')
+		self.stategraphs[0].net.draw(self.drawpath + self.targetfunc.name + '_aug.eps')
 	def draw_state_graph(self):
-		self.stategraphs[0].draw('draws/' + self.targetfunc.name + '_sg.eps')
+		self.stategraphs[0].draw(self.drawpath + self.targetfunc.name + '_sg.eps')
 
 	def draw_alpha(self, filename=None, relevant=False):
 		if filename is None:

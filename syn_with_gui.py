@@ -283,8 +283,8 @@ class App(Frame):
 	# class methods
 	def set_text(self, ent, text):
 		''' set the text of an instance Entry '''
-			ent.delete(0, END)
-			ent.insert(0, text)
+		ent.delete(0, END)
+		ent.insert(0, text)
 	def clear_entry(self, ent):
 		self.set_text(ent, '')
 	def reset_entries(self):

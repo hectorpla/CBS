@@ -156,16 +156,19 @@ def write_tests_tofile(lines, f):
 	f.write('let _ = print_string (string_of_bool ({0}))\n'.\
 		format(' && '.join(['test' + str(i) for i in range(test_num+1)])))
 
+def try_mkdir(dirname):
+	try:
+		os.mkdir(dirname)
+	except FileExistsError:
+		pass
+
 def make_dir_for_file(filename):
 	''' make sure all components of the path exist '''
 	components = re.split(r'/+', filename)
 	if len(components) < 2: return
 	sofar = components[0]
 	for c in components[1:]:
-		try:
-			os.mkdir(sofar)
-		except FileExistsError:
-			pass
+		try_mkdir(sofar)
 		sofar += '/' + c
 
 def search_file(name, ftype='file'):

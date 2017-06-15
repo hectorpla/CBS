@@ -214,7 +214,7 @@ class Component(Signature):
 		self.name = func_id(signature['name'], signature.get('module', ''))
 		self._add_funcs()
 	def __str__(self):
-		return self.name
+		return self.name + ' : ' + ' -> '.join(self.io_types())
 	def id(self):
 		return self.name
 	def param_types(self):
