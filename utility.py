@@ -22,25 +22,29 @@ def parse_multiple_dirs(dirs):
 	return l
 
 def parse_dir(dir):
+	''' parse a libraries, handle format exception in this level '''
 	dir = dir.rstrip('/')
 	prefix = search_file(dir, ftype='dir')
 	if not prefix:
-		raise FileNotFoundError("can't find {0} in '{1}'".format(file, path))
-	m = map(lambda file: parse_json(prefix + '/' + file), os.listdir(prefix))
-	return [e for e in m if e is not None]
+		raise FileNotFoundError("directory of {0} not found".format(dir))
+	# m = map(lambda file: parse_json(prefix + '/' + file), os.listdir(prefix))
+	records = []
+	for file in os.listdir(prefix):
+		try:
+			records.append(parse_json(prefix + '/' + file))
+		except IOError as ioe:
+			print('IO error: ', ioe)
+		except ValueError as ve:
+			print('value error parsing ' + file, ":", ve)	
+	return records
 
 def parse_json(file):
+	''' simply parse a json file, no exceptions handled '''
 	# print('parsing file:', file)
-	result = None
-	try:
-		f = open(file, 'r')
-		serial = f.read() # what if crush here, the file will not be closed
-		result = json.loads(serial)
-		f.close()
-	except IOError as ioe:
-		print('IO error: ', ioe)
-	except ValueError as ve:
-		print('value error parsing ' + file, ":", ve)		
+	f = open(file, 'r')
+	serial = f.read() # what if crush here, the file will not be closed
+	result = json.loads(serial)
+	f.close()		
 	return result
 
 # ____________________________________________________________________

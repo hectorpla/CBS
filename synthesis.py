@@ -161,16 +161,20 @@ class Synthesis(object):
 		return newbrch
 	
 	def syn_subtask(self, sub_dict, middle_tests):
-		''' Called by outside to synthesize subtask of the functionality '''
+		''' Called by outside to synthesize a subtask of the whole task '''
 		sub_name = self.name_of_syn_func() + '_sub' + str(next(self.part_counter))
-		subdict_copy = sub_dict.copy()
+		subdict_copy = sub_dict.copy() # for later check
 		sub_dict['name'] = sub_name
 		subfunc = SubFunc(sub_dict)
 		synpart = SynPart(self, subfunc, middle_tests)
 		accepting_subcode = synpart.get_subtask_code()
+		if not accepting_subcode:
+			return None
 		# add new syn'ed function to the petri net and update stategraph
 		self.comps[sub_name] = Component(sub_dict, self.stategraphs[0].net)
 		for sg in self.stategraphs:
+			# update reachability graph 
+			# (create edges connected by the transition of the subfunc)
 			sg.update_with_func(sub_name)
 		if self.accepting_subcode is None:
 			self.accepting_subcode = []

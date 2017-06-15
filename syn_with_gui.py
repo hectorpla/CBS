@@ -14,6 +14,10 @@ FIX_MODE = 2
 class FieldError(Exception):
 	def __init__(self, msg):
 		self.msg = msg
+class InvalidTestFormat(Exception):
+	def __init__(self, testfile):
+		self.testfile = testfile
+		
 class SubFuncNotFound(Exception):
 	pass
 class SubFuncAlreadySyn(Exception):
@@ -38,7 +42,8 @@ class App(Frame):
 		self.midtest_entries = []
 		self.active_tests = 0
 		self.max_active = 10
-		self.fix_json = 'teprog/fix_exported.json'		
+		self.fix_json = 'teprog/fix_exported.json'
+		self.temp_list = []	
 
 		self.pack()
 		self.create_left_panel()
@@ -107,6 +112,8 @@ class App(Frame):
 		create_sigtr_json_button = Button(self.left_input_sub_panel, text='create json')
 		create_sigtr_json_button.grid(row=4, column=2)
 		create_sigtr_json_button['command'] = self.create_json
+		clear_ent_button = Button(self.left_input_sub_panel, text='reset', command=self.reset_entries)
+		clear_ent_button.grid(row=3, column=2)
 
 	# _________________________________________________________________________________
 	# the panel on the right
@@ -185,6 +192,9 @@ class App(Frame):
 				testcases = re.findall(r'try\((.*?)\)', teststring) # match test wrapped by "try()"
 				if len(testcases) == 0:
 					testcases = re.findall(r'let +test[0-9]* *= *(.+)', teststring)
+				if len(testcases) == 0:
+					self.set_error('invalid test format in {0}'.format(testfile))
+					raise InvalidTestFormat(testfile)
 				for _ in range(self.active_tests - len(testcases)):
 					delete_test()
 				for i, testcase in enumerate(testcases):
@@ -196,7 +206,11 @@ class App(Frame):
 
 		def import_json():
 			filename = import_entry.get()
-			sigtr = utility.parse_json('signatures/' + filename.strip())
+			try:
+				json_folder = 'signatures/'
+				sigtr = utility.parse_json(json_folder + filename.strip())
+			except FileNotFoundError:
+				self.set_error('file {0} not in {1}'.format(json_folder))
 			list2string = lambda lst : '; '.join(lst)
 			self.set_text(self.name_entry, sigtr['name'])
 			self.set_text(self.para_entry, list2string(sigtr['paramNames']))
@@ -235,8 +249,9 @@ class App(Frame):
 			''' for the convenience of test '''
 			importlib.reload(synthesis)
 			importlib.reload(TEfixer)
+			importlib.reload(utility)
 			self.synt = None
-			print('synthesis, TEfixer module reloaded')
+			print('Modules synthesis, TEfixer, utility reloaded')
 		reload_button = Button(self.rightframe, text='reload modules(for test)',
 			command=reload_syn)
 		reload_button.pack(side='bottom')
@@ -267,9 +282,22 @@ class App(Frame):
 	# _____________________________________________________________________________________
 	# class methods
 	def set_text(self, ent, text):
+		''' set the text of an instance Entry '''
 			ent.delete(0, END)
 			ent.insert(0, text)
+	def clear_entry(self, ent):
+		self.set_text(ent, '')
+	def reset_entries(self):
+		''' set all entries blank '''
+		entries = filter(lambda field: isinstance(field, Entry), self.__dict__.values())
+		for ent in entries:
+			self.clear_entry(ent)
+	def set_code(self, toshow):
+		self.codeview.delete(1.0, END)
+		for line in toshow:
+			self.codeview.insert(END, line + '\n')
 	def set_error(self, msg):
+		''' set error message in the Error Message box while flashing it '''
 		def flash(count):
 			bg = self.errmsg_label.cget('background')
 			fg = self.errmsg_label.cget('foreground')
@@ -282,12 +310,10 @@ class App(Frame):
 		self.errmsg_label.configure(background='red') # weird black
 		flash(4)
 		self.errmsg_label.configure(background=bfg, foreground=bbg)
-
 	def clear_all_entries(self):
-		for field in self.__dict__:
+		for field in self.__dict__.values():
 			if isinstance(field, Entry):
-				self.set_text(field, '')
-
+				self.clear_entry(field)
 	def read_code(self):
 		return self.codeview.get("1.0", END)
 
@@ -308,6 +334,7 @@ class App(Frame):
 			self.set_error('Lengths of parameters and types do not agree')
 			raise FieldError('inconsisent length')
 		return sigtr_dict
+
 	def read_test_info(self):
 		folder = 'test'
 		test_file = folder + '/' + self.sigtr_dict['name'] + '_test.ml'
@@ -316,7 +343,7 @@ class App(Frame):
 			tests = (test_entry[1].get() for test_entry in self.test_entries[:self.active_tests])
 			utility.write_tests_tofile(tests, f)
 			self.sigtr_dict['testpath'] = test_file
-			self.test_prog_file = test_file
+			self.temp_list.append(test_file)
 		return test_file
 	def create_json(self):
 		if self.mode.get() != FIX_MODE:
@@ -325,6 +352,7 @@ class App(Frame):
 		sigtr_dict = self.read_sigt_info()
 		with open(self.fix_json, 'w') as f:
 			json.dump(sigtr_dict, f)
+			self.temp_list.append(self.fix_json)
 		return sigtr_dict
 	def get_inputs(self, selector):
 		''' to document '''
@@ -373,6 +401,7 @@ class App(Frame):
 			return sub_dict
 		sub_dict = create_sub_dict()
 		if self.synt.subfunc_syned(sub_dict):
+			self.set_error("This sub-task has been syn'ed")
 			raise SubFuncAlreadySyn()
 		# synthesis go
 		middle_tests = zip(selected_argslist, middle_results)
@@ -380,9 +409,11 @@ class App(Frame):
 		if sub_code:
 			self.set_code(sub_code)
 		else:
+			self.set_error('Code for sub-task not found')
 			raise SubFuncNotFound()
 
 	def synt_setup(self):
+		''' create a Synthesis instance using the information on the left panel '''
 		score = 'json/scores.json'
 		try:
 			self.synt = synthesis.Synthesis(sigtr_dict=self.sigtr_dict, func_scores=score)
@@ -390,6 +421,7 @@ class App(Frame):
 			self.synt.set_syn_len(self.syn_len)
 		except FileNotFoundError as fne:
 			self.set_error(str(fne))
+			raise fne
 
 	def fix_program(self):
 		if self.mode.get() != FIX_MODE:
@@ -405,7 +437,7 @@ class App(Frame):
 			self.set_code(fixed)
 		else:
 			self.set_error('fixer failed to fill out the blank')
-		self.clean_temps()
+		self.clean_temp_files()
 
 	def start_synthesis(self):
 		''' start synthesis from scratch in syn mode, 
@@ -416,7 +448,7 @@ class App(Frame):
 			self.read_test_info()
 		except FieldError:
 			return
-		self.set_error('')
+		self.errmsg.set('')
 		self.synt_setup()
 		try:
 			solution = self.synt.start()
@@ -428,17 +460,14 @@ class App(Frame):
 		else:
 			self.set_code(['Program not found.'])
 
-	def set_code(self, toshow):
-		self.codeview.delete(1.0, END)
-		for line in toshow:
-			self.codeview.insert(END, line + '\n')
-
-	def clean_temps(self):
+	def clean_temp_files(self):
+		''' clean up the temporary files in the process of synthesis '''
 		try:
-			os.remove(self.fix_json)
-			os.remove(self.test_prog_file)
+			for tempf in self.temp_list:
+				os.remove(tempf)
 		except:
 			pass
+
 root = Tk('OCaml Program Synthesis')
 root.geometry("1100x600")
 app = App(master=root)
