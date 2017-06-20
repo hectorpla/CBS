@@ -54,7 +54,7 @@ class SynBranch(object):
 subtask_counter = itertools.count(1) # TEMPORARY
 class SynPart(object):
 	def __init__(self, parent_synthesis, subfunc, mid_tests):
-		''' input_cands is a list of (var, type) pairs, and toreturn is a (var, type) 
+		''' mid_tests is an iterable that each time yield a ([args], result) tuple  
 			test cases as ["let fun arg0 arg2 = <expected output>"; test2...]
 		'''
 		self.synt = parent_synthesis
@@ -67,7 +67,7 @@ class SynPart(object):
 			with open(self.testfile, 'w') as f:
 				toline = lambda args,result: self.func_name + ' ' + ' '.join(args) + ' = ' + result
 				lines = (toline(*test) for test in self.tests)
-				write_tests_tofile(lines, f)
+				utility.write_tests_tofile(lines, f)
 		except Exception as e:
 			print(e)
 			exit()
@@ -168,7 +168,9 @@ class Synthesis(object):
 		return newbrch
 	
 	def syn_subtask(self, sub_dict, middle_tests):
-		''' Called by outside to synthesize a subtask of the whole task '''
+		''' Called by outside to synthesize a subtask of the whole task;
+			if successful, add new syn'ed function to the petri net and update stategraph 
+		'''
 		sub_name = self.name_of_syn_func() + '_sub' + str(next(self.part_counter))
 		subdict_copy = sub_dict.copy() # for later check
 		sub_dict['name'] = sub_name
@@ -177,15 +179,16 @@ class Synthesis(object):
 		accepting_subcode = synpart.get_subtask_code()
 		if not accepting_subcode:
 			return None
-		# add new syn'ed function to the petri net and update stategraph
+		assert len(self.stategraphs) == 1 and self.stategraphs[0].steps_explored == 0
 		self.comps[sub_name] = Component(sub_dict, self.stategraphs[0].net)
+		# print(self.stategraphs, '\n', self.stategraphs[0].net.transition())
 		for sg in self.stategraphs:
 			# update reachability graph 
 			# (create edges connected by the transition of the subfunc)
 			sg.update_with_func(sub_name)
 		if self.accepting_subcode is None:
 			self.accepting_subcode = []
-		self.accepting_subcode.append(accepting_subcode)
+		self.accepting_subcode.append((sub_name, accepting_subcode)) # make it a tuple
 		if self.finished_subdict is None:
 			self.finished_subdict = []
 		self.finished_subdict.append(subdict_copy)
@@ -200,9 +203,19 @@ class Synthesis(object):
 
 	def resume_syn(self):
 		''' resume synthesis after getting the solution for middle results '''
+		print('==========================  resume synthesis  ==============================')
 		assert len(self.accepting_subcode) == 1
-		subcode = self.accepting_subcode[-1]
+		subcode_id, subcode = self.accepting_subcode[-1]
 		sublen = len(subcode) - 2 # assume straight program without considering clone
+		tosync_name = self.name_of_syn_func()
+		print(subcode_id)
+		testfile = self.sigtr_dict['testpath']
+		for code in self.enum_straight_code(firstline=self.targetfunc, stmrk=self.start_marking,
+				endmrk=self.end_marking, rec_funcname=tosync_name, midfun=subcode_id, midfun_len=sublen):
+			compound_code = subcode + code
+			if self._test(compound_code, self.name_of_syn_func(), testpath=testfile):
+				print('SUCCEEDED!!!')
+				break
 
 	def start(self, enab_brch=True):
 		'''interface for outside'''
@@ -302,8 +315,10 @@ class Synthesis(object):
 			stmrk = self.targetfunc.get_start_marking()
 		yield from self.enum_straight_code(firstline=firstline, stmrk=stmrk, rec_funcname=rec_funcname)
 
-	def enum_straight_code(self, firstline, stmrk=None, endmrk=None, rec_funcname=None):
-		for sk, skformatter in self._enum_straight_sketch(firstline, stmrk, endmrk, rec_funcname):
+	def enum_straight_code(self, firstline, stmrk=None, endmrk=None, rec_funcname=None, 
+			midfun=None, midfun_len=None):
+		for sk, skformatter in self._enum_straight_sketch(firstline, stmrk, endmrk, 
+				rec_funcname, midfun, midfun_len):
 			print(' ~sketche with holes~ ')
 			print_sketch(skformatter.format_out())
 			next(self.sketch_counter)
@@ -316,9 +331,10 @@ class Synthesis(object):
 				next(self.enum_counter) # count sketch
 				yield concretelines
 
-	def _enum_straight_sketch(self, firstline, stmrk, endmrk=None, rec_funcname=None):
+	def _enum_straight_sketch(self, firstline, stmrk, endmrk=None, rec_funcname=None, 
+			midfun=None, midfun_len=None):
 		''' enumerate non-complete sketches(with holes), build stategraph if necessary '''
-		def enum(stategraph, start_marking, end_marking):
+		def enum_straight(stategraph, start_marking, end_marking):
 			''' helper for the outer function '''
 			# call interface from the search plugin
 			for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, endmrk=end_marking, 
@@ -331,6 +347,19 @@ class Synthesis(object):
 					yield sketch
 				except ConstraintError:
 					pass # ignore sketches that cannot be concretized
+		def enum_through(stategraph, start_marking, end_marking):
+			for seq in stategraph.enum_with_part(start_marking, end_marking, midfun,
+					midfun_len, self._synlen, self.priority_dict):
+				# copy & paste, should change
+				if rec_funcname is not None and rec_funcname in seq:
+					continue
+				try:
+					sketch = self._gen_sketch(seq, firstline)
+					print(seq)
+					yield sketch
+				except ConstraintError:
+					pass
+		enum = enum_through if midfun else enum_straight
 		graphpool = self.subtask_sgs if isinstance(firstline, SubFunc) else self.stategraphs
 		for sg in graphpool:
 			if stmrk in sg:

@@ -7,7 +7,7 @@ OCPet is a program synthesizer for OCaml language. The idea of OCPet comes from 
 Simply clone this repository to your desktop.
 
 ### Prerequisites
-Python3, z3, tkinter(optional)
+Python3, z3, dot(optional, for drawing graphs), tkinter(optional, for GUI)
 
 ## Directories
 
@@ -32,3 +32,4 @@ Included libraries are: char, string, bytes, list.
 1. Component-Based Synthesis for Complex APIs, by Yu Feng.
 2. Refer to SyPet here: https://github.com/fredfeng/fredfeng.github.io/tree/master/sypet/all-in-one/SyPet
 3. Thanks to Franck Pommereau for the SNAKES module. Please refer to https://github.com/fpom/snakes.
+

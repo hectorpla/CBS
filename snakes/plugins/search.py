@@ -172,6 +172,7 @@ def extend(module):
 			for state in self._done: # should not use __iter__
 				self.goto(state)
 				mode = trans.modes()
+				print(mode)
 				assert len(mode) == 1
 				mode = mode[0]
 				self._fire(trans, mode) # copy from nets.py
@@ -197,6 +198,13 @@ def extend(module):
 				state = self._todo.pop(0)
 				self._compute(state)
 			self.steps_explored += 1
+
+		def _prepare_graph(self, pathlen):
+			''' explore state graph with pathlen steps with BFS '''
+			while self.steps_explored < pathlen:
+				if len(self._todo) == 0:
+					return
+				self.build_by_step()
 
 		def get_state(self, marking):
 			isinstance(marking, Marking)
@@ -235,6 +243,7 @@ def extend(module):
 			# try: (should catch CannotReachError)
 			for route in self._node2node_path(start_state, endmrk, depth):
 				print('path: {0}'.format(route))
+				# print(list(self._edge_enumerate_rec([], route, 1))) # wierd: didn't understand the behv
 				for sequence in self._edge_enumerate_rec([], route, 1):
 					yield sequence
 		def _edge_enumerate_rec(self, sequence, path, pos):
@@ -248,12 +257,6 @@ def extend(module):
 				yield from self._edge_enumerate_rec(sequence, path, pos + 1)
 				sequence.pop()
 		
-		def _prepare_graph(self, pathlen):
-			''' explore state graph until '''
-			while self.steps_explored < pathlen:
-				if len(self._todo) == 0:
-					return
-				self.build_by_step()
 		def _node2node_path(self, start_state, endmrk, depth=float('inf')):
 			''' search from the end using backtracking, implemented iteratively '''
 			self._prepare_graph(depth-1)
@@ -309,28 +312,41 @@ def extend(module):
 				route.pop()
 		# for test
 
-		# sketch enum by ranking
+		# _______________________________ sketch enum by ranking
+		def _all_edges_to_or_from(self, to_or_from, state):
+			''' low level function for _all_edges_to/from '''
+			if to_or_from == 'to':
+				container = self._pred[state]
+			elif to_or_from == 'from':
+				container = self._succ[state]
+			ename = lambda t : t[0].name # extract edge name from a (transition, subsitution) tuple
+			res =  [(ename(edge), dest) for dest, edges in container.items() for edge in edges]
+			return res
 		def _all_edges_to(self, state):
 			''' return all in-coming edges from the state, paired with source state '''
-			ename = lambda t : t[0].name # extract edge name from a (transition, subsitution) tuple
-			res =  [(ename(edge), dest) for dest, edges in self._pred[state].items() for edge in edges]
-			return res
+			return self._all_edges_to_or_from('to', state)
+		def _all_edges_from(self, state):
+			return self._all_edges_to_or_from('from', state)
+
 		def _edge_enum_with_prio(self, start_state, end_state, max_depth, scores, threshold=100):
-			''' 
-				combine the node enum and edge enum phase, 
+			''' combine the node enum and edge enum phase, 
 				algo improvement: for mutiple edges, reachable paths should be stored 
 			'''
 			path, prio_stack, edge_stack, branch_stack, paths = [[] for _ in range(5)]
 			# alias		
 			nodes_exp, timer = 0, time.clock()
 			workspace = {}
-			workspace['start_state'], workspace['end_state'] = start_state, end_state
 			workspace['worklists'] = [path, prio_stack]
 			workspace['choice_stack'], workspace['branch_stack'] = edge_stack, branch_stack
-
 			def init():
+				nonlocal end_state # wierd: WHY in this function, start_state can be accessed
+				# self._prepare_graph(max_depth-1)
+				# print(start_state, end_state)
+				end_state = end_state if end_state else self._get_state(self.end_marking)
+				if end_state is None: 
+					raise CannotReachErrorr(self)
 				prio_stack.extend([1])
-				edge_stack.extend(self._all_edges_to(workspace['end_state'])) # end_state to be modified later
+				edge_stack.extend(self._all_edges_to(end_state)) # end_state to be modified later
 				branch_stack.extend([len(edge_stack)])
 			def get_score(func_name):
 				temp = [""]
@@ -349,19 +365,10 @@ def extend(module):
 				fac = 1 / get_score(edge)
 				prio = prio_stack[-1] * fac
 				return target, [edge, prio]
-			def enum_append():
-				''' append the result of choice_pop into the working list; return the reached state '''
-				branch_stack[-1] -= 1
-				target, (edge, prio) = choice_pop()
-				path.append(edge)
-				prio_stack.append(prio)
-				return target
-			def enum_pop():
-				path.pop()
-				prio_stack.pop()
 			explore_operator = self._all_edges_to
 			def goal_test(target):
-				return len(path) >= max_depth-1 and target == workspace['start_state']
+				# an inner function can access the parameters of the outer function
+				return len(path) >= max_depth-1 and target == start_state
 			def yield_n_existing(n=float('inf')):
 				# print('# PATHS:', len(paths), '|', paths)
 				count = 0
@@ -390,7 +397,7 @@ def extend(module):
 				very vulnerable because of mixing different local environments
 				UGLY: poor readability
 			'''
-			elems = ['worklists', 'choice_stack', 'branch_stack', 'start_state', 'end_state']
+			elems = ['worklists', 'choice_stack', 'branch_stack'] # 'start_state', 'end_state']
 			funs = ['init', 'choice_pop', 'goal_test', 'answer_yielder', 'explore_operator']
 			for e in elems:
 				if e not in workspace:
@@ -398,22 +405,20 @@ def extend(module):
 			for f in funs:
 				if f not in funset:
 					raise BackTrackUtilError('FUNCTION' + f + ' NEEDED to implement BT')
-			self._prepare_graph(max_depth-1)
-			# print('-----{0}-----\n{1}\n-----'.format(self.steps_explored, self._marking))
-			workspace['end_state'] = workspace['end_state'] if workspace['end_state'] else self._get_state(self.end_marking)
-			if workspace['end_state'] is None: 
-				raise CannotReachErrorr(self)
 			def enum_pop():
 				for wl in workspace['worklists']:
 					wl.pop()
 			def enum_append():
+				''' append the result of choice_pop into the working list; return the reached state '''
 				numchoice = len(workspace['choice_stack'])
-				target, elems = funset['choice_pop'].__call__()
+				target, elems = funset['choice_pop'].__call__() # choice_pop() should return target first
 				assert len(workspace['choice_stack']) == numchoice - 1
 				workspace['branch_stack'][-1] -= 1
-				for l, e in zip(workspace['worklists'], elems):
-					l.append(e)
+				for lst, e in zip(workspace['worklists'], elems):
+					lst.append(e)
 				return target
+			self._prepare_graph(max_depth-1) # prepare the state graph first
+			# print('-----{0}-----\n{1}\n-----'.format(self.steps_explored, self._marking))
 			funset['init'].__call__()
 			while len(workspace['choice_stack']) > 0:
 				if workspace['branch_stack'][-1] <= 0: # pop until the current node has positive branches
@@ -426,51 +431,62 @@ def extend(module):
 				if len(workspace['worklists'][0]) == max_depth - 1:
 					enum_pop()
 					continue
+				# choice extension
 				new_choices = funset['explore_operator'].__call__(target)
 				workspace['choice_stack'].extend(new_choices)
 				workspace['branch_stack'].append(len(new_choices))
 			if 'final_yielder' in funset:
 				yield from funset['final_yielder'].__call__()
 
-		def _explore_until_use_of_func(self, start_state, end_state, func_name, max_depth):
-			''' only allow clone edges or func '''
+		def _explore_until_use_of_func(self, start_state, func_name, max_depth):
+			''' only allow clone edges or func 
+				NOTE: does not need a end state because there can be more than one 
+			'''
 			path, edge_stack, branch_stack, paths = [[] for _ in range(4)]
 			# alias
 			workspace = {}
-			workspace['start_state'], workspace['end_state'] = start_state, end_state
 			workspace['worklists'] = [path]
 			workspace['choice_stack'], workspace['branch_stack'] = edge_stack, branch_stack
+			latest_state = start_state # record the latest state reached by the explorer
 
-			explore_operator = lambda t: list(filter(lambda x: x.startswith('clone_'), self._all_edges_to(t)))
+			explore_operator = lambda t: list(filter(lambda x: x[0].startswith('clone_') or x[0] == func_name, 
+				self._all_edges_from(t))) # should be all edge from
 			def init():
-				''' the last step is the specified function, so the initial choice stack contains all
-					state that rea  '''
-				path.append(func_name)
-				get_edges_by_func =\
-				 lambda end : [(edge, dest) for (edge, dest) in self._all_edges_to(end) if edge == func_name]
-				edge_stack.extend(explore_operator(workspace['end_state']))
+				''' To doc '''
+				# path is initially empty
+				edge_stack.extend(explore_operator(start_state))
 				branch_stack.extend([len(edge_stack)])
 			def choice_pop():
-				target, edge = edge_stack.pop()
+				nonlocal latest_state
+				edge, target = edge_stack.pop()
+				# print(edge_stack)
+				latest_state = target
 				return target, [edge]
 			def answer_yielder():
-				while len(paths):
-					yield reversed(paths.pop())
+				nonlocal latest_state
+				yield latest_state, path
 			def goal_test(target):
-				return target == workspace['start_end']
+				''' the parameter is a dummy '''
+				# print('_explore_until_use_of_func ---- path:', path)
+				return path[-1] == func_name
 			funs = ['init', 'choice_pop', 'goal_test', 'answer_yielder', 'explore_operator']
 			funset = dict([(k,v) for (k, v) in locals().items() if k in funs])
 			yield from self._general_bt(workspace, funset, max_depth)
 
-		def _enum_with_part(self, start_state, end_state, middle_state, middlefun, midfun_len, 
-				max_depth, scores):
-			''' find paths from start to end, paths must go through middle, use two enums above '''
-			pass
-			for firstpart in self._explore_until_use_of_func(start_state, middle_state, middlefun):
+		def enum_with_part(self, stmrk, endmrk, middlefun, midfun_len, max_depth, scores):
+			''' find paths from start to end, paths must go through a middle point, 
+				combine two enumeration methods above '''
+			start_state = self.get_state(stmrk)
+			end_state = self._get_state(endmrk) # if endmrk else self._get_state(self.end_marking)
+
+			for middle_state, firstpart in self._explore_until_use_of_func(start_state, middlefun, midfun_len):
 				len_left = max_depth - len(firstpart)
+				print('length left', len_left)
 				if len_left <= 0: 
 					continue
-				for secondpart in self._edge_enum_with_prio(middle_state, end_state, len_left, scores):
+				midmrk = self[middle_state]
+
+				for secondpart in self.enumerate_sketch_l(midmrk, endmrk, len_left, scores):
 					yield firstpart + secondpart
 
 		def num_states_exlore(self):

@@ -39,20 +39,22 @@ class App(Frame):
 		self.sigtr_dict = None
 		self.prev_subdict = None
 		self.test_entries = []
-		self.midtest_entries = []
 		self.active_tests = 0
 		self.max_active = 10
-		self.fix_json = 'teprog/fix_exported.json'
-		self.temp_list = []	
+		self.fix_json = 'teprog/fix_exported.json'		
 
 		self.pack()
 		self.create_left_panel()
 		self.create_right_panel()
 		self.midtestframe = None
+		self.midtest_entries = []
 
 		# synthesis parameters
 		self.synt = None
 		self.syn_len = 6
+
+		# for cleanup
+		self.temp_list = []
 	def create_left_panel(self):
 		self.leftframe = Frame(self, width=500, height=600)
 		self.leftframe.pack_propagate(0)
@@ -240,7 +242,9 @@ class App(Frame):
 		midtest_button.grid(row=0, column=0)
 		syn_part_button = Button(synpart_frame, text='Syn Part', command=self.synthesize_nested_function)
 		syn_part_button.grid(row=0, column=1)
-		
+		resume_button = Button(synpart_frame, text='resume', command=self.resume_synthesis)
+		resume_button.grid(row=0, column=2)
+
 		# Fixer related
 		fix_button = Button(buttonframe1, text='Fix', command=self.fix_program)
 		fix_button.grid(row=1, column=1)
@@ -365,6 +369,10 @@ class App(Frame):
 		return lhs
 
 	def synthesize_nested_function(self):
+		''' synthesis a middle function with the results '''
+		if self.midtestframe is None:
+			set_error('please add middle tests first')
+			return
 		# be careful of inconsistency
 		if not self.sigtr_dict or self.name_entry.get() != self.sigtr_dict['name']:
 			self.sigtr_dict = self.read_sigt_info()
@@ -378,7 +386,7 @@ class App(Frame):
 			subrtype = rtypespec.strip()
 			# get effective middle tests
 			midtest_inputs = [e.get() for e in self.midtest_entries]
-			effective_list = [i for i in range(self.max_active) if midtest_inputs[i] != '']
+			effective_list = [i for i in range(self.max_active) if midtest_inputs[i] != ''] # max_active -> active_tests
 			# get selected from the effective ones
 			middle_results = list(select_from_list(midtest_inputs, effective_list))
 			selected_inputs = self.get_inputs(effective_list)
@@ -411,6 +419,16 @@ class App(Frame):
 		else:
 			self.set_error('Code for sub-task not found')
 			raise SubFuncNotFound()
+
+	def resume_synthesis(self):
+		if self.synt.finished_subdict is None:
+			self.set_error('please first synthesize part')
+			return
+		solution = self.synt.resume_syn()
+		if solution:
+			self.set_code(solution)
+		else:
+			self.set_code(['Program not found.'])
 
 	def synt_setup(self):
 		''' create a Synthesis instance using the information on the left panel '''
@@ -469,6 +487,6 @@ class App(Frame):
 			pass
 
 root = Tk('OCaml Program Synthesis')
-root.geometry("1100x600")
+root.geometry("1280x600")
 app = App(master=root)
 app.mainloop()
