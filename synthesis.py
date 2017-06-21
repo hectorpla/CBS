@@ -210,12 +210,16 @@ class Synthesis(object):
 		tosync_name = self.name_of_syn_func()
 		print(subcode_id)
 		testfile = self.sigtr_dict['testpath']
-		for code in self.enum_straight_code(firstline=self.targetfunc, stmrk=self.start_marking,
-				endmrk=self.end_marking, rec_funcname=tosync_name, midfun=subcode_id, midfun_len=sublen):
-			compound_code = subcode + code
-			if self._test(compound_code, self.name_of_syn_func(), testpath=testfile):
-				print('SUCCEEDED!!!')
-				break
+		try:
+			for code in self.enum_straight_code(firstline=self.targetfunc, stmrk=self.start_marking,
+					endmrk=self.end_marking, rec_funcname=tosync_name, midfun=subcode_id, midfun_len=sublen):
+				compound_code = subcode + code
+				if self._test(compound_code, self.name_of_syn_func(), testpath=testfile):
+					print('SUCCEEDED!!!')
+					return compound_code
+		except KeyboardInterrupt:
+			self.statistics()
+		self.statistics()
 
 	def start(self, enab_brch=True):
 		'''interface for outside'''
@@ -335,8 +339,7 @@ class Synthesis(object):
 			midfun=None, midfun_len=None):
 		''' enumerate non-complete sketches(with holes), build stategraph if necessary '''
 		def enum_straight(stategraph, start_marking, end_marking):
-			''' helper for the outer function '''
-			# call interface from the search plugin
+			''' helper for the outer function, call interface from the search plugin '''
 			for seq in stategraph.enumerate_sketch_l(stmrk=start_marking, endmrk=end_marking, 
 					max_depth=self._synlen, func_prio=self.priority_dict):
 				if rec_funcname is not None and rec_funcname in seq:
@@ -350,7 +353,7 @@ class Synthesis(object):
 		def enum_through(stategraph, start_marking, end_marking):
 			for seq in stategraph.enum_with_part(start_marking, end_marking, midfun,
 					midfun_len, self._synlen, self.priority_dict):
-				# copy & paste, should change
+				# TODO: copy & paste, should change
 				if rec_funcname is not None and rec_funcname in seq:
 					continue
 				try:

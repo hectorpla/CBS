@@ -5,6 +5,7 @@ from collections import deque
 import heapq
 import time
 
+#_______________ Exceptions
 class searchError(Exception):
 	def __init__(self, stateGraph, msg=None):
 		self.stateGraph = stateGraph
@@ -24,7 +25,7 @@ class BackTrackUtilError(Exception):
 		self.msg = msg
 	def __str__(self):
 		return self.msg
-################## Utility ##################
+#_______________ Utility
 def weight_of_arc(e):
 	assert isinstance(e, MultiArc)
 	return len(e)
@@ -119,7 +120,6 @@ def extend(module):
 			self.net.globals._env['this_net'] = self.net # let the net be evaluable in the local context itself, not safe
 			self._prepare_net()
 			self.steps_explored = 0 # indicate the how many times we have explore state in state graph
-			# print('----state graph created----')
 		def _prepare_net(self):
 			''' set guards for transition and take care of the special place "unit" '''
 			W = dict((place.name, place.max_out()) for place in self.net.place()) # the max outgoing weights for places
@@ -452,8 +452,7 @@ def extend(module):
 			explore_operator = lambda t: list(filter(lambda x: x[0].startswith('clone_') or x[0] == func_name, 
 				self._all_edges_from(t))) # should be all edge from
 			def init():
-				''' To doc '''
-				# path is initially empty
+				''' path is initially empty '''
 				edge_stack.extend(explore_operator(start_state))
 				branch_stack.extend([len(edge_stack)])
 			def choice_pop():
@@ -464,7 +463,7 @@ def extend(module):
 				return target, [edge]
 			def answer_yielder():
 				nonlocal latest_state
-				yield latest_state, path
+				yield latest_state, path.copy()
 			def goal_test(target):
 				''' the parameter is a dummy '''
 				# print('_explore_until_use_of_func ---- path:', path)
@@ -473,21 +472,32 @@ def extend(module):
 			funset = dict([(k,v) for (k, v) in locals().items() if k in funs])
 			yield from self._general_bt(workspace, funset, max_depth)
 
-		def enum_with_part(self, stmrk, endmrk, middlefun, midfun_len, max_depth, scores):
-			''' find paths from start to end, paths must go through a middle point, 
-				combine two enumeration methods above '''
+		def enum_with_part(self, stmrk, endmrk, middlefun, midfun_len, max_depth, scores, threshold=1):
+			''' Find paths from start to end, paths must go through a middle point, 
+				combine two enumeration methods above
+				Use round-robin style enumeration to de-prioritize
+			'''
 			start_state = self.get_state(stmrk)
 			end_state = self._get_state(endmrk) # if endmrk else self._get_state(self.end_marking)
 
-			for middle_state, firstpart in self._explore_until_use_of_func(start_state, middlefun, midfun_len):
+			first_enumerator = self._explore_until_use_of_func(start_state, middlefun, midfun_len)
+			firsts = list(first_enumerator)
+			queue = deque(range(len(firsts)))
+			while len(queue):
+				indx = queue.popleft()
+				print('=======', firsts[indx])
+				middle_state, firstpart = firsts[indx]
 				len_left = max_depth - len(firstpart)
-				print('length left', len_left)
-				if len_left <= 0: 
-					continue
+				if len_left <= 0: continue
+				print('Length left {0}, First part: {1}'.format(len_left, firstpart))
 				midmrk = self[middle_state]
-
-				for secondpart in self.enumerate_sketch_l(midmrk, endmrk, len_left, scores):
-					yield firstpart + secondpart
+				second_enumerator = self.enumerate_sketch_l(midmrk, endmrk, len_left, scores)
+				try:
+					for _ in range(threshold):
+						yield firstpart + next(second_enumerator)
+				except StopIteration:
+					continue
+				queue.append(indx)
 
 		def num_states_exlore(self):
 			return len(self._done)

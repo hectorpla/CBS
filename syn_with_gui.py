@@ -172,7 +172,9 @@ class App(Frame):
 		self.set_len_entry.grid(row=0, column=1)
 		def set_len():
 			try:
-				self.syn_len = int(self.set_len_entry.get())
+				newval = int(self.set_len_entry.get())
+				self.syn_len = newval
+				print('Synthesis length set to {0}'.format(newval))
 			except ValueError:
 				pass
 		set_len_button = Button(set_len_frame, text='Set length', command=set_len)
@@ -240,7 +242,7 @@ class App(Frame):
 		synpart_frame.pack(side='bottom')
 		midtest_button = Button(synpart_frame, text='Add middle tests', command=self.create_mid_test_panel)
 		midtest_button.grid(row=0, column=0)
-		syn_part_button = Button(synpart_frame, text='Syn Part', command=self.synthesize_nested_function)
+		syn_part_button = Button(synpart_frame, text='Syn Part', command=self.synthesize_middlefunc)
 		syn_part_button.grid(row=0, column=1)
 		resume_button = Button(synpart_frame, text='resume', command=self.resume_synthesis)
 		resume_button.grid(row=0, column=2)
@@ -368,10 +370,10 @@ class App(Frame):
 			# rhs.append(r.strip())
 		return lhs
 
-	def synthesize_nested_function(self):
+	def synthesize_middlefunc(self):
 		''' synthesis a middle function with the results '''
 		if self.midtestframe is None:
-			set_error('please add middle tests first')
+			self.set_error('please add middle tests first')
 			return
 		# be careful of inconsistency
 		if not self.sigtr_dict or self.name_entry.get() != self.sigtr_dict['name']:
@@ -421,7 +423,7 @@ class App(Frame):
 			raise SubFuncNotFound()
 
 	def resume_synthesis(self):
-		if self.synt.finished_subdict is None:
+		if self.synt is None or self.synt.finished_subdict is None:
 			self.set_error('please first synthesize part')
 			return
 		solution = self.synt.resume_syn()
