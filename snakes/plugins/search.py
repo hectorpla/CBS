@@ -5,26 +5,22 @@ from collections import deque
 import heapq
 import time
 
+DEBUG = False
+
 #_______________ Exceptions
-class searchError(Exception):
-	def __init__(self, stateGraph, msg=None):
-		self.stateGraph = stateGraph
-		self.msg = msg
+class CannotReachErrorr(Exception):
+	def __init__(self, start, end, sg):
+		self.start, self.end, self.sg = start, end, sg
 	def __str__(self):
-		return repr('{0} -> {1}'.format(self.stateGraph.net.name, self.msg))
-class CannotReachErrorr(searchError):
-	def __init__(self, stateGraph):
-		super(CannotReachErrorr, self).__init__(stateGraph)
-	def __str__(self):
-		# TODO: message no longer correct because the start and end marking can be changable
-		msg = "Marking {0} can't be reached from Marking{1} in Petri net '{2}'".\
-			format(self.stateGraph.end_marking, self.stateGraph[0], self.stateGraph.net.name)
+		msg = "Marking {0} can't be reached from Marking {1} in Petri net '{2}'".\
+			format(self.end, self.end, self.sg.net.name)
 		return repr(msg)
 class BackTrackUtilError(Exception):
 	def __init__(self, msg):
 		self.msg = msg
 	def __str__(self):
 		return self.msg
+
 #_______________ Utility
 def weight_of_arc(e):
 	assert isinstance(e, MultiArc)
@@ -34,6 +30,11 @@ def weight_of_arc(e):
 # ie., in the namespace of a net, expression of itself is also evaluable
 @snakes.plugins.plugin("snakes.nets")
 def extend(module):
+	''' 
+		This method provide extended methods and functionalities for the original class:
+		Place, Transition, StateGraph. Refer to:
+		  https://www.ibisc.univ-evry.fr/~fpommereau/SNAKES/API/plugins/index.html
+	'''
 	class Place(module.Place):
 		def max_out(self):
 			''' find out the maximum outgoing weight '''
@@ -92,7 +93,8 @@ def extend(module):
 			return reachables
 		def construct_alpha_graph(self):
 			'''
-			construct the simple reachability graph described as in the paper
+			construct the simple reachability graph (without multi-edges) 
+			described as in the paper
 			'''
 			graph = {}
 			for tran in self._trans.values():
@@ -200,27 +202,34 @@ def extend(module):
 			self.steps_explored += 1
 
 		def _prepare_graph(self, pathlen):
-			''' explore state graph with pathlen steps with BFS '''
+			''' explore state graph with pathlen steps with BFS 
+				until pathlen times are explored '''
 			while self.steps_explored < pathlen:
 				if len(self._todo) == 0:
 					return
 				self.build_by_step()
 
-		def get_state(self, marking):
-			isinstance(marking, Marking)
-			return self._state[marking]
-
-		def enumerate_sketch_l(self, stmrk=None, endmrk=None, max_depth=10, func_prio=None):
-			""" yet another generator warpping another, called by synthesis to enumerate sketches incly """
-			start_state = self.get_state(stmrk)
+		def enumerate_sketch_l(self, stmrk=None, endmrk=None, 
+				max_depth=10, func_prio=None, strategy='rr'):
+			""" 
+				yet another generator warpping another, 
+				called by synthesis to enumerate sketches increasingly
+			"""
+			start_state = self._get_state(stmrk)
 			end_state = self._get_state(endmrk) if endmrk else self._get_state(self.end_marking)
 			def enum(l):
-				return self.enumerate_sketch(start_state=start_state, endmrk=endmrk, depth=l) if func_prio is None else\
-			 		self._edge_enum_with_prio(start_state=start_state, end_state=end_state, max_depth=l, scores=func_prio)
-			# length-increasing style
-			# for length in range(2, max_depth+2):
-			# 	print("^^^length", length)
-			# 	yield from enum(length)
+				return self.enumerate_sketch(start_state=start_state, 
+					endmrk=endmrk, depth=l) if func_prio is None\
+			 		else self._edge_enum_with_prio(
+			 			start_state=start_state, end_state=end_state,
+			 		 	max_depth=l, scores=func_prio)
+
+			if strategy == 'incleng':
+				# length-increasing style
+				for length in range(2, max_depth+2):
+					print("^^^length", length)
+					yield from enum(length)
+				return
 
 			# round-robin style
 			enumerators = deque([(l, enum(l)) for l in range(2, max_depth+2)]) 
@@ -240,7 +249,6 @@ def extend(module):
 
 		def enumerate_sketch(self, start_state, endmrk, depth=float('inf')):
 			""" list all possible transition paths from all state paths, given the # of steps(depth) """
-			# try: (should catch CannotReachError)
 			for route in self._node2node_path(start_state, endmrk, depth):
 				print('path: {0}'.format(route))
 				# print(list(self._edge_enumerate_rec([], route, 1))) # wierd: didn't understand the behv
@@ -261,23 +269,21 @@ def extend(module):
 			''' search from the end using backtracking, implemented iteratively '''
 			self._prepare_graph(depth-1)
 			end_state = self._get_state(endmrk) if endmrk else self._get_state(self.end_marking)
-			print('-----{0}-----\n{1}\n----------'.format(self.steps_explored, self._marking))
+			# print('-----{0}-----\n{1}\n----------'.format(self.steps_explored, self._marking))
 			if end_state is None:
-				raise CannotReachErrorr(self)
+				raise CannotReachErrorr(self[start_state], endmrk, self)
 			route = [] # the current backwards route
 			node_st = [] # stack for nodes
 			branch_st = [] # the top stores the # braches of the current node
 			node_st.append(end_state)
 			branch_st.append(1)
 			while len(node_st) > 0:
-				# print('node stack %s' % str(node_st))
 				if branch_st[-1] <= 0:
 					branch_st.pop()
 					route.pop()
 					continue
 				target = node_st.pop()
 				branch_st[-1] -= 1
-				# print("pop -> %s" % str(target))
 				route.append(target)
 				if len(route) == depth or depth == float('inf'): # ugly: logic fallable
 					if target == start_state: # issue: 0 -> 0 self cycle for infinite depth case
@@ -341,10 +347,9 @@ def extend(module):
 			def init():
 				nonlocal end_state # wierd: WHY in this function, start_state can be accessed
 				# self._prepare_graph(max_depth-1)
-				# print(start_state, end_state)
 				end_state = end_state if end_state else self._get_state(self.end_marking)
 				if end_state is None: 
-					raise CannotReachErrorr(self)
+					raise CannotReachErrorr(self[start_state], '#UNDEFINED#', self)
 				prio_stack.extend([1])
 				edge_stack.extend(self._all_edges_to(end_state)) # end_state to be modified later
 				branch_stack.extend([len(edge_stack)])
@@ -358,7 +363,9 @@ def extend(module):
 					ret = 0.05
 				return ret
 			def choice_pop():
-				''' pop a choice from choice stack and return (reached state, [elems to append in worklists]) '''
+				''' pop a choice from choice stack and, 
+					return (reached state, [elems to append in worklists]) 
+				'''
 				nonlocal nodes_exp
 				edge, target = edge_stack.pop()
 				nodes_exp += 1
@@ -367,7 +374,7 @@ def extend(module):
 				return target, [edge, prio]
 			explore_operator = self._all_edges_to
 			def goal_test(target):
-				# an inner function can access the parameters of the outer function
+				# caveat: start_state is bound to outer-scoped variable
 				return len(path) >= max_depth-1 and target == start_state
 			def yield_n_existing(n=float('inf')):
 				# print('# PATHS:', len(paths), '|', paths)
@@ -380,8 +387,9 @@ def extend(module):
 				''' deal with the enumeration strategy and provide side effect interface '''
 				nonlocal nodes_exp, timer
 				heapq.heappush(paths, (prio_stack[-1], list(reversed(path))))
-				print('{0}...\t\tnodes explored: {1}\t\t{2:.6g}s ellapsed'.format(len(paths), 
-					nodes_exp, time.clock() - timer))
+				if DEBUG:
+					print('{0}...\t\tnodes explored: {1}\t\t{2:.6g}s ellapsed'.format(len(paths), 
+						nodes_exp, time.clock() - timer))
 				timer, nodes_exp = time.clock(), 0
 				if len(paths) >= threshold:
 					yield from yield_n_existing(threshold)
@@ -418,7 +426,6 @@ def extend(module):
 					lst.append(e)
 				return target
 			self._prepare_graph(max_depth-1) # prepare the state graph first
-			# print('-----{0}-----\n{1}\n-----'.format(self.steps_explored, self._marking))
 			funset['init'].__call__()
 			while len(workspace['choice_stack']) > 0:
 				if workspace['branch_stack'][-1] <= 0: # pop until the current node has positive branches
@@ -443,22 +450,24 @@ def extend(module):
 				NOTE: does not need a end state because there can be more than one 
 			'''
 			path, edge_stack, branch_stack, paths = [[] for _ in range(4)]
-			# alias
 			workspace = {}
 			workspace['worklists'] = [path]
 			workspace['choice_stack'], workspace['branch_stack'] = edge_stack, branch_stack
 			latest_state = start_state # record the latest state reached by the explorer
 
-			explore_operator = lambda t: list(filter(lambda x: x[0].startswith('clone_') or x[0] == func_name, 
-				self._all_edges_from(t))) # should be all edge from
+			explore_operator = lambda t: list(filter(\
+				lambda x: x[0].startswith('clone_') or x[0] == func_name, 
+				self._all_edges_from(t)))
 			def init():
 				''' path is initially empty '''
 				edge_stack.extend(explore_operator(start_state))
 				branch_stack.extend([len(edge_stack)])
 			def choice_pop():
+				''' always record the reached state so that every time 
+					the enumerator yields a path, the path is paired with destination 
+				'''
 				nonlocal latest_state
 				edge, target = edge_stack.pop()
-				# print(edge_stack)
 				latest_state = target
 				return target, [edge]
 			def answer_yielder():
@@ -466,7 +475,6 @@ def extend(module):
 				yield latest_state, path.copy()
 			def goal_test(target):
 				''' the parameter is a dummy '''
-				# print('_explore_until_use_of_func ---- path:', path)
 				return path[-1] == func_name
 			funs = ['init', 'choice_pop', 'goal_test', 'answer_yielder', 'explore_operator']
 			funset = dict([(k,v) for (k, v) in locals().items() if k in funs])
@@ -477,7 +485,7 @@ def extend(module):
 				combine two enumeration methods above
 				Use round-robin style enumeration to de-prioritize
 			'''
-			start_state = self.get_state(stmrk)
+			start_state = self._get_state(stmrk)
 			end_state = self._get_state(endmrk) # if endmrk else self._get_state(self.end_marking)
 
 			first_enumerator = self._explore_until_use_of_func(start_state, middlefun, midfun_len)
@@ -485,7 +493,7 @@ def extend(module):
 			queue = deque(range(len(firsts)))
 			while len(queue):
 				indx = queue.popleft()
-				print('=======', firsts[indx])
+				print('====== Enumeration with part =====', firsts[indx])
 				middle_state, firstpart = firsts[indx]
 				len_left = max_depth - len(firstpart)
 				if len_left <= 0: continue
@@ -499,7 +507,7 @@ def extend(module):
 					continue
 				queue.append(indx)
 
-		def num_states_exlore(self):
+		def num_states_explored(self):
 			return len(self._done)
 
 	return Place, Transition, PetriNet, StateGraph
