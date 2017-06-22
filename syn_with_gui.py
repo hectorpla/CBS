@@ -214,7 +214,7 @@ class App(Frame):
 				json_folder = 'signatures/'
 				sigtr = utility.parse_json(json_folder + filename.strip())
 			except FileNotFoundError:
-				self.set_error('file {0} not in {1}'.format(json_folder))
+				self.set_error('file "{0}" not in {1}'.format(json_folder))
 			list2string = lambda lst : '; '.join(lst)
 			self.set_text(self.name_entry, sigtr['name'])
 			self.set_text(self.para_entry, list2string(sigtr['paramNames']))

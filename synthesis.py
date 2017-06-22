@@ -416,7 +416,7 @@ class Synthesis(object):
 		print('Average enumeration time: {0}s'.format(self.sum_test_time / num_concrete))
 		print('Number of states explored for each stategraph:')
 		for sg in self.stategraphs:
-			print(sg.num_states_exlore())
+			print(sg.num_states_explored())
 		print('|------------------------------------------------------------|')
 
 	def print_comps(self):

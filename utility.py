@@ -26,7 +26,7 @@ def parse_dir(dir):
 	dir = dir.rstrip('/')
 	prefix = search_file(dir, ftype='dir')
 	if not prefix:
-		raise FileNotFoundError("directory of {0} not found".format(dir))
+		raise FileNotFoundError('directory "{0}" not found'.format(dir))
 	# m = map(lambda file: parse_json(prefix + '/' + file), os.listdir(prefix))
 	records = []
 	for file in os.listdir(prefix):
