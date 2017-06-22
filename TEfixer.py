@@ -5,8 +5,13 @@ import os
 import re
 
 class TEfixer(object):
+	'''
+		a client of the class Synthesis, using it to achieve 
+		missing functionality in ??
+	'''
 	def __init__(self, type_info_file, progfile=None, prog=None):
-		''' expect the prog be a file or a string of code as strings;  
+		''' 
+			expect the prog be a file or a string of code as strings;  
 			position be the line range; type_info and test in .json file
 		'''
 		assert progfile or prog
@@ -53,7 +58,10 @@ class TEfixer(object):
 		fn2 = re.search((r'let +rec +(\w+)'), prog)
 		return fn2.group(1) if fn2 else None
 	def _split_code_by_questionmark(self, prog):
-		''' find the ?? (where the fixed code would fill) and return code segment before and after that '''
+		''' 
+			find the ?? (where the fixed code would fill) 
+			and return code segment before and after that 
+		'''
 		return re.findall(r'(.*)\?\?(.*)', prog, flags=re.DOTALL)[0]
 	def _add_rec_comp(self):
 		''' add the funciton to fix as a component to the synthesis instance '''

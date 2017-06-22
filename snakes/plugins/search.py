@@ -228,7 +228,11 @@ def extend(module):
 				# length-increasing style
 				for length in range(2, max_depth+2):
 					print("^^^length", length)
-					yield from enum(length)
+					try:
+						yield from enum(length)
+					except CannotReachErrorr as cre:
+						print('//////////////' + str(cre) + '\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\')
+						continue
 				return
 
 			# round-robin style
@@ -497,7 +501,6 @@ def extend(module):
 				middle_state, firstpart = firsts[indx]
 				len_left = max_depth - len(firstpart)
 				if len_left <= 0: continue
-				print('Length left {0}, First part: {1}'.format(len_left, firstpart))
 				midmrk = self[middle_state]
 				second_enumerator = self.enumerate_sketch_l(midmrk, endmrk, len_left, scores)
 				try:

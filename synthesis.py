@@ -4,8 +4,8 @@ import utility
 
 class SynBranch(object):
 	''' basically do the same work as synthesis.
-		be careful: a synbracn composes a synthesis, so when doing synthesis-related things,
-		refer to the synt member
+		be careful: a synbracn composes a synthesis in order to reuse synthesis info,
+			but that causes cyclic reference
 	'''
 	def __init__(self, parent_synthesis, brch, collection, sb_id):
 		assert parent_synthesis.stategraphs is not None
@@ -20,7 +20,8 @@ class SynBranch(object):
 		print('BRANCH end', self.synt.end_marking)
 	def _sketch_other_case(self):
 		return '|_ -> raise Syn_exn'
-	def _enum_brch_sketch(self):
+	def _enum_brch_codes(self):
+		''' use the parent synthesis to synthesize brch codes '''
 		id_cand = self.brch.id_func_variables()
 		start = self.brch.start_marking
 		yield from self.synt.enum_concrete_code(self.brch, id_cand, start, brchout=False)
@@ -28,33 +29,36 @@ class SynBranch(object):
 			print('CHANGE START VAR: sub start marking:', substart)
 			brchsks = self.synt.enum_concrete_code(self.brch, [], substart, brchout=False)
 			yield from brchsks
-	def _make_runable(self, brchsk):
+	def _make_runable(self, brchpart):
+		''' make complete program by concating branch part and the rest '''
 		runablesketch = [self.synt.targetfunc.sketch()]
 		runablesketch.extend([self.brch.matchline])
 		for sb in self.sb_collection[:-1]: # add branch codes sythesized successfully previously
 			assert sb.accepting_partial is not None
 			runablesketch.extend(sb.accepting_partial)
-		runablesketch.extend(brchsk)
+		runablesketch.extend(brchpart)
 		runablesketch.extend([self._sketch_other_case()])
 		# print(runablesketch)
 		return runablesketch
 	def _test_partial(self, partial, outname):
+		''' a wrapper of the test method of Synthesis '''
 		print('  (partial test run)')
 		return self.synt._test(partial, outname)
 	def get_accepting_partial(self):
-		'''if there is one return it, otherwise return None'''
+		''' if there is one return it, otherwise return None '''
 		print('finding accepting partial: ' + str(self.brch))
 		outfile = self.synt.targetfunc.name + '_brch_' + str(self.brch.brch_id)
-		for brchsk in self._enum_brch_sketch():
-			torun = self._make_runable(brchsk)
+		for brchpart in self._enum_brch_codes():
+			torun = self._make_runable(brchpart)
 			if self._test_partial(torun, outfile):
-				self.accepting_partial = brchsk
-				return brchsk
+				self.accepting_partial = brchpart
+				return brchpart
 
 subtask_counter = itertools.count(1) # TEMPORARY
 class SynPart(object):
 	def __init__(self, parent_synthesis, subfunc, mid_tests):
-		''' mid_tests is an iterable that each time yield a ([args], result) tuple  
+		''' 
+			mid_tests is an iterable that each time yield a ([args], result) tuple  
 			test cases as ["let fun arg0 arg2 = <expected output>"; test2...]
 		'''
 		self.synt = parent_synthesis
@@ -72,7 +76,10 @@ class SynPart(object):
 			print(e)
 			exit()
 	def get_subtask_code(self):
-		''' borrow the parent as a whole, access and modify the modify parent, bad idea! '''
+		''' 
+			borrow the parent as a whole, access and modify the parent,
+			might be bad 
+		'''
 		self._write_test()
 		# old_test = self.synt.testpath
 		# self.synt.testpath = self.testfile ## begin
@@ -160,16 +167,20 @@ class Synthesis(object):
 		self._synlen = max_len		
 
 	def _branch_out(self, brchlist, brch):
-		'''create a new branch that does the subtask of synthesis
-			(a branch of pattern matching) '''
+		'''
+			create a new branch that does the subtask of synthesis
+			(a branch of pattern matching) 
+		'''
 		newbrch_id = next(self.brch_counter)
 		newbrch = SynBranch(self, brch, brchlist, brch)
 		brchlist.append(newbrch)
 		return newbrch
 	
 	def syn_subtask(self, sub_dict, middle_tests):
-		''' Called by outside to synthesize a subtask of the whole task;
-			if successful, add new syn'ed function to the petri net and update stategraph 
+		''' 
+			Called by outside to synthesize a subtask of the whole task;
+			if successful, add new syn'ed function to the petri net 
+			and update stategraph 
 		'''
 		sub_name = self.name_of_syn_func() + '_sub' + str(next(self.part_counter))
 		subdict_copy = sub_dict.copy() # for later check
@@ -211,8 +222,10 @@ class Synthesis(object):
 		print(subcode_id)
 		testfile = self.sigtr_dict['testpath']
 		try:
-			for code in self.enum_straight_code(firstline=self.targetfunc, stmrk=self.start_marking,
-					endmrk=self.end_marking, rec_funcname=tosync_name, midfun=subcode_id, midfun_len=sublen):
+			for code in self.enum_straight_code(firstline=self.targetfunc, 
+					stmrk=self.start_marking, endmrk=self.end_marking, 
+					rec_funcname=tosync_name, midfun=subcode_id, 
+					midfun_len=sublen):
 				compound_code = subcode + code
 				if self._test(compound_code, self.name_of_syn_func(), testpath=testfile):
 					print('SUCCEEDED!!!')
@@ -420,9 +433,11 @@ class Synthesis(object):
 		print('|------------------------------------------------------------|')
 
 	def print_comps(self):
+		''' print components of the Synthesis instance, for debug '''
 		for i, c in enumerate(self.comps.values()):
 			print(i, c)
 	def draw_net(self):
+		''' draw the clean Petri net right after loading the specified libraries '''
 		numnode = len(self.net._place) + len(self.net._trans) # for convenience
 		if numnode > 200:
 			print('*************** Warning: PetriNet too large(' + str(numnode) 
@@ -430,6 +445,9 @@ class Synthesis(object):
 			return
 		self.net.draw(self.drawpath + self.targetfunc.name + '.eps')
 	def draw_augmented_net(self):
+		''' draw the Petri net where transitions are contrained and
+			clone transitions are added
+		'''
 		assert self.stategraphs is not None
 		print('stategraphs[0] start:', self.stategraphs[0][0])
 		self.stategraphs[0].goto(0)
@@ -438,6 +456,7 @@ class Synthesis(object):
 		self.stategraphs[0].draw(self.drawpath + self.targetfunc.name + '_sg.eps')
 
 	def draw_alpha(self, filename=None, relevant=False):
+		''' draw the simple-graph reachability graph '''
 		if filename is None:
 			filename = self.targetfunc.name
 		useful_places = self.stategraphs[0].useful_places

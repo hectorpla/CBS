@@ -26,6 +26,7 @@ class parseError(Exception):
 		return repr(msg)
 
 class IOWeightObject(object):
+	''' an abstract class that holds input and output information '''
 	def __init__(self):
 		raise NotImplementedError('abstract class IOWeightObject')
 		self.paras = None # supposed to be [(arg0, type0) ...]
@@ -45,13 +46,13 @@ class IOWeightObject(object):
 	def params_of_type(self, t):
 		return list(para for para, typing in self.paras if typing == t)
 
-brch_counter = itertools.count(1) # temperialy use it
+brch_counter = itertools.count(1) # for temporal use
 class Branch(IOWeightObject):
+	''' a class for a branch of pattern matching
+		brch arg example: 
+			in the brach |hd::tl -> ..., hd and tl are branch argument for this branch
+	'''
 	def __init__(self, sigtr, brchbef, brchargs, brchtype='list'):
-		''' class for a branch of pattern matching
-			brch arg example: 
-			in |hd::tl -> ..., hd and tl are branch argument for this branch
-		'''
 		assert isinstance(sigtr, Signature) # a branch is derived from a function signature
 		assert isinstance(brchbef, tuple) and len(brchbef) == 2 # example (arg0, int list)
 		if brchtype != 'list':
@@ -125,7 +126,8 @@ class Branch(IOWeightObject):
 		''' idempotent in terms of binding values to a single key '''
 		return Marking(dict(zip(typelist, itertools.repeat(MultiSet(['t'])))))
 	def sub_start_marking(self):
-		''' yield the subset of the branch's start marking, each place only having one token
+		''' 
+			yield the subset of the branch's start marking, each place only having one token
 			taking one type away at at time
 		'''
 		places = list(self.start_marking.keys())
@@ -197,8 +199,10 @@ class TargetFunc(Signature):
 		return repr('TargetFunc({0}): {1}'.format(self.name, self.paras))
 
 class SubFunc(TargetFunc):
-	""" The instance of this class might have both different input and output than 
-		the TargetFunc it originated from """
+	""" 
+		The instance of this class might have both different input 
+		and output compared with the TargetFunc it originated from 
+	"""
 	def __init__(self, sub_dict):
 		super(SubFunc, self).__init__(sub_dict)
 	def id_func_variables(self):
@@ -268,8 +272,9 @@ class Component(Signature):
 		return sk
 
 class SketchLine(object):
-	'''An abstract data structure for a line of sketch(semantic of a line)
-		sketch feature added'''
+	''' An abstract data structure for a line of sketch(semantic of a line)
+		sketch feature added
+	'''
 	def __init__(self, comp, variables, holes):
 		self._comp = comp
 		self._holes = holes # list of (hole#, type)
@@ -283,7 +288,8 @@ class SketchLine(object):
 		'''a polymorphistic method'''
 		return (var for var in self._vars)
 	def sketch(self, subst=None):
-		'''take care of the return line, if it is line like "let a = foo b", pass down to component'''
+		''' take care of the return line, if it is line like "let a = foo b", 
+			pass down to component'''
 		if self._comp is None:
 			if subst is None:
 				return ', '.join(map(lambda x: '#' + str(first_elem_of_tuple(x)), self._holes))
@@ -291,7 +297,7 @@ class SketchLine(object):
 		return self._comp.sketch(self._vars, list(map(first_elem_of_tuple, self._holes)), subst)
 
 class Sketch(object):
-	"""data structure for a code sketch in purpose to complete in SAT solver"""
+	""" data structure for a code sketch in purpose to complete in SAT solver """
 	def __init__(self, sklines):
 		self.type_vars = {} # each bucket stores the variables having the same type
 		self.type_holes = {} # each bucket contains places
@@ -304,6 +310,7 @@ class Sketch(object):
 		self.args = sklines[0].paras_list()
 		self.last_var = next(sklines[-2].variables())[0] # the first var of the second last line
 		self.init_frame(sklines)
+
 	def init_frame(self, sklines):
 		for skline in sklines:
 			self._add_line(skline)
@@ -344,9 +351,11 @@ class Sketch(object):
 			candiate_holes = (hole for hole in self.type_holes[typing] if var in self.hole_vars[hole])
 			self.var_holes[var].update(candiate_holes)
 	def add_rec_constraints(self, holes_matrix, brch):
-		''' add constraints to the holes(parameters) in recursive calls
-		holes_matrix is like [[h3,h4], [h8,h9]], where hi is (#, type) tuple, all rows align accrd to type
-		for a recursive call, ex, foo (v:int) (w:intlist), the vcand_matrix is like
+		''' 
+			add constraints to the holes(parameters) in recursive calls
+			holes_matrix is like [[h3,h4], [h8,h9]], 
+				where hi is (#, type) tuple, all rows align accroding to types
+			for a recursive call, ex, foo (v:int) (w:intlist), the vcand_matrix is like:
 				[[hd], [tl]], hd typed with int, tl typed with intlist
 		'''
 		try:
@@ -420,8 +429,6 @@ class Sketch(object):
 
 	def enum_subst(self):
 		'''enumerate possible completions of the code sketch'''
-		# self._add_var_cands()
-		# self._set_up_constraints()
 		if DEBUG:
 			print('Sketch.enum_subst: ')
 			print('type_vars: ' + str(self.type_vars))
@@ -431,9 +438,7 @@ class Sketch(object):
 			print()
 		while True:
 			start = time.clock()
-			if z3.sat == self.s.check():
-				# print('z3 solve time:', time.clock() - start)
-				# print('  -----',end='')
+			if z3.sat == self.s.check():				
 				yield self._process_model()
 			else:
 				break

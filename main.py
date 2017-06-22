@@ -1,6 +1,6 @@
 from synthesis import *
 
-signtr = 'signatures/intchar2string.json'
+signtr = 'signatures/char_head_of_int_list.json'
 score = 'json/scores.json'
 
 construct_start = time.clock()
