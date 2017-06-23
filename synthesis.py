@@ -155,13 +155,15 @@ class Synthesis(object):
 
 	def _build_graph(self, sg):
 		''' wrapper for building the complete reachability graph, 
-			DECREPATATED because no need construct whole reachability graph '''
+			DECREPATATED because no need to construct the whole 
+			reachability graph '''
 		start = time.clock()
 		sg.build()
 		print('state graph(' + str(len(sg)) + ' states) build time:', time.clock() - start)
 	def setup(self):
 		'''build up state graph according to the start'''
-		self.stategraphs = [StateGraph(self.net, start=self.start_marking, end=self.end_marking)]
+		self.stategraphs = [StateGraph(self.net, start=self.start_marking
+			, end=self.end_marking)]
 		# self._build_graph(self.stategraphs[0])
 	def set_syn_len(self, max_len):
 		self._synlen = max_len		
@@ -287,6 +289,10 @@ class Synthesis(object):
 			next(self.enum_counter)
 			yield lines
 	def enum_branched_codes(self):
+		''' 
+			enumerate codes with pattern matching braching structure
+			only simple matching for list is featured
+		'''
 		print('--- START OF BRANCH ENUMERATING ---')
 		list_args = self.targetfunc.paras_of_list_type()
 		for arg, t in list_args:
@@ -334,6 +340,7 @@ class Synthesis(object):
 
 	def enum_straight_code(self, firstline, stmrk=None, endmrk=None, rec_funcname=None, 
 			midfun=None, midfun_len=None):
+		''' pure enumeration of codes calling library functions '''
 		for sk, skformatter in self._enum_straight_sketch(firstline, stmrk, endmrk, 
 				rec_funcname, midfun, midfun_len):
 			print(' ~sketche with holes~ ')
@@ -364,6 +371,7 @@ class Synthesis(object):
 				except ConstraintError:
 					pass # ignore sketches that cannot be concretized
 		def enum_through(stategraph, start_marking, end_marking):
+			''' enumerator with middle points '''
 			for seq in stategraph.enum_with_part(start_marking, end_marking, midfun,
 					midfun_len, self._synlen, self.priority_dict):
 				# TODO: copy & paste, should change

@@ -209,11 +209,12 @@ def extend(module):
 					return
 				self.build_by_step()
 
+		# THE MOST IMPORTANT INTERFACE FOR OUTSIDE
 		def enumerate_sketch_l(self, stmrk=None, endmrk=None, 
 				max_depth=10, func_prio=None, strategy='rr'):
 			""" 
 				yet another generator warpping another, 
-				called by synthesis to enumerate sketches increasingly
+				called by a Synthesis to enumerate sketches
 			"""
 			start_state = self._get_state(stmrk)
 			end_state = self._get_state(endmrk) if endmrk else self._get_state(self.end_marking)
@@ -235,7 +236,7 @@ def extend(module):
 						continue
 				return
 
-			# round-robin style
+			# round-robin style: for each length, enumerate 
 			enumerators = deque([(l, enum(l)) for l in range(2, max_depth+2)]) 
 			while len(enumerators) > 0:
 				l, enumerator = enumerators.popleft()

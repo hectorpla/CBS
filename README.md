@@ -31,6 +31,10 @@ Python3, OCaml, z3, graphviz, tkinter(optional, for GUI)
 ├─── teprog/  
 ├─── data.py  
 ├─── synthesis.py  
+├─── syn_with_gui.py
+├─── TEfixer.py
+├─── te_test.py
+├─── main.py
 ...
 ```
 
@@ -46,9 +50,15 @@ Python3, OCaml, z3, graphviz, tkinter(optional, for GUI)
 
 + *snakes/plugins/search.py* a plug-in added to SNAKES, implementation of algorithms of sketch enumeration.
 
-- *synthesis.py* implementation of algorithms of concrete code geneartion and verification
+- *synthesis.py* includes the implementation of algorithms of concrete code geneartion and verification.
 
-- *data.py* defines data abstractions used in synthesis.py
+- *data.py* defines data abstractions used in synthesis.py.
+
+- *syn_with_gui.py* is a GUI module for the synthesizer.
+
+- *TEfixer.py* a program fixer module, which is a client of the Synthesis class.
+
+- *te_test* is a test for the TEfixer class.
 
 ## Examples
 Modify signature file name to target signature file name, and run the following command in terminal.
