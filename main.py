@@ -1,7 +1,14 @@
 from synthesis import *
+import argparse
 
-signtr = 'signatures/char_head_of_int_list.json'
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('-filename', metavar='filename', type=str, help='..')
+parser.add_argument('-len', metavar='length of program', type=int, default=7)
+args = parser.parse_args()
+
+signtr = 'signatures/' + args.filename #'signatures/intchar2string.json'
 score = 'json/scores.json'
+length = args.len
 
 construct_start = time.clock()
 syns = Synthesis(sigtr_file=signtr, func_scores=score, enab_func_para=False)
@@ -17,6 +24,6 @@ print('Synthesis set up successfully')
 
 syns.draw_augmented_net()
 syns.draw_state_graph()
-syns.set_syn_len(7) # set the maximum program length
+syns.set_syn_len(length) # set the maximum program length
 
 syns.start(enab_brch=True)

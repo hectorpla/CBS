@@ -21,10 +21,10 @@ Python3, OCaml, z3, graphviz, tkinter(optional, for GUI)
 ```
 .  
 ├─── snakes/  
-│    ├─ ...  
-│    └─ plugins  
 │    	├─ ...  
-│    	└─ search.py  
+│    	└─ plugins  
+│    		├─ ...  
+│    		└─ search.py  
 ├─── signatures/  
 ├─── json/  
 ├─── draws/  
